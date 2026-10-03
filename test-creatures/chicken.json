@@ -1,0 +1,138 @@
+{
+  "version": 2,
+  "id": "688c372d-62a1-4be9-ae2f-a81ef31fae5e",
+  "createdAt": "2026-10-03T23:35:41.413Z",
+  "settings": {
+    "name": "chicken",
+    "movement": null,
+    "behaviours": [
+      null,
+      null
+    ],
+    "sound": "opps"
+  },
+  "bounds": {
+    "minX": -58,
+    "minY": -84,
+    "maxX": 100,
+    "maxY": 96
+  },
+  "parts": [
+    {
+      "id": "p0",
+      "points": [
+        [-18, -41],
+        [-35, -41],
+        [-47, -37],
+        [-56, -29],
+        [-58, -20],
+        [-51, 2],
+        [-41, 22],
+        [-25, 37],
+        [-13, 42],
+        [9, 43],
+        [37, 27],
+        [53, 9],
+        [58, -9],
+        [52, -20],
+        [40, -29],
+        [9, -38],
+        [-27, -43]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": [0, 0],
+      "role": "body",
+      "moves": false,
+      "z": 0
+    },
+    {
+      "id": "p1",
+      "points": [
+        [24, -4],
+        [27, 2]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p2",
+      "points": [
+        [-19, 41],
+        [-28, 55],
+        [-40, 69],
+        [-43, 70],
+        [-45, 69],
+        [-46, 62],
+        [-47, 61]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p3",
+      "points": [
+        [-1, 46],
+        [-1, 57],
+        [5, 77],
+        [12, 94],
+        [18, 96],
+        [23, 93],
+        [29, 87],
+        [32, 79]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p4",
+      "points": [
+        [-6, -46],
+        [-5, -43],
+        [-5, -48],
+        [-15, -67],
+        [-24, -81],
+        [-28, -84]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p5",
+      "points": [
+        [60, -7],
+        [100, -7],
+        [77, 2],
+        [33, 15]
+      ],
+      "color": "#C8413A",
+      "width": 5,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    }
+  ]
+}

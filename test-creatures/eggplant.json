@@ -1,0 +1,124 @@
+{
+  "version": 2,
+  "id": "8df43401-f426-4650-981c-e8b7f6c17ce6",
+  "createdAt": "2026-10-03T23:36:40.433Z",
+  "settings": {
+    "name": "eggplant",
+    "movement": "waddles proudly",
+    "behaviours": [
+      "bows, jump",
+      null
+    ],
+    "sound": "wahhhh"
+  },
+  "bounds": {
+    "minX": -32,
+    "minY": -71,
+    "maxX": 35,
+    "maxY": 100
+  },
+  "parts": [
+    {
+      "id": "p0",
+      "points": [
+        [-21, -56],
+        [-21, 16],
+        [-17, 39],
+        [-11, 50],
+        [-6, 54],
+        [2, 56],
+        [7, 53],
+        [14, 44],
+        [18, 37],
+        [20, 27],
+        [21, 3],
+        [16, -12],
+        [8, -22],
+        [2, -28],
+        [-10, -36],
+        [-20, -37]
+      ],
+      "color": "#C8413A",
+      "width": 4,
+      "parent": null,
+      "pivot": [0, 0],
+      "role": "body",
+      "moves": false,
+      "z": 0
+    },
+    {
+      "id": "p1",
+      "points": [
+        [-18, -70],
+        [-26, -65],
+        [-32, -57],
+        [-25, -59],
+        [1, -60],
+        [-10, -66],
+        [-24, -71]
+      ],
+      "color": "#4E9A63",
+      "width": 4,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p2",
+      "points": [
+        [-11, 3],
+        [-10, 4],
+        [-7, 5],
+        [-5, -2],
+        [-4, -2],
+        [-2, 5],
+        [0, 5],
+        [3, -1],
+        [5, -2],
+        [8, 4]
+      ],
+      "color": "#9B5DE5",
+      "width": 4,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p3",
+      "points": [
+        [-1, 60],
+        [-3, 70],
+        [-11, 91],
+        [-14, 94],
+        [-17, 93]
+      ],
+      "color": "#9B5DE5",
+      "width": 4,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p4",
+      "points": [
+        [3, 59],
+        [7, 68],
+        [26, 100],
+        [35, 98]
+      ],
+      "color": "#9B5DE5",
+      "width": 4,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    }
+  ]
+}

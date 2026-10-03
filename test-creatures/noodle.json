@@ -1,0 +1,128 @@
+{
+  "version": 2,
+  "id": "2753d32b-70aa-4629-95ea-e6f4cbd3ee3c",
+  "createdAt": "2026-10-03T23:34:59.694Z",
+  "settings": {
+    "name": "noodle",
+    "movement": null,
+    "behaviours": [
+      null,
+      null
+    ],
+    "sound": "hii"
+  },
+  "bounds": {
+    "minX": -60,
+    "minY": -86,
+    "maxX": 86,
+    "maxY": 100
+  },
+  "parts": [
+    {
+      "id": "p0",
+      "points": [
+        [-60, -17],
+        [-60, 46],
+        [-55, 58],
+        [-44, 64],
+        [-9, 64],
+        [11, 56],
+        [29, 44],
+        [42, 30],
+        [56, 3],
+        [60, -22],
+        [59, -33],
+        [46, -54],
+        [28, -63],
+        [14, -64],
+        [5, -63],
+        [-32, -45],
+        [-49, -24],
+        [-60, -15]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": [0, 0],
+      "role": "body",
+      "moves": false,
+      "z": 0
+    },
+    {
+      "id": "p1",
+      "points": [
+        [-12, -3],
+        [-3, -1],
+        [12, 6]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p2",
+      "points": [
+        [-46, -62],
+        [-29, -48]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p3",
+      "points": [
+        [12, -66],
+        [28, -84],
+        [32, -86]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p4",
+      "points": [
+        [56, 11],
+        [67, 11],
+        [86, 20]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    },
+    {
+      "id": "p5",
+      "points": [
+        [5, 62],
+        [6, 88],
+        [9, 98],
+        [10, 99],
+        [13, 100]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": null,
+      "role": null,
+      "moves": null,
+      "z": null
+    }
+  ]
+}

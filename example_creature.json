@@ -1,0 +1,211 @@
+{
+  "version": 2,
+  "id": "5f0c2a9e-8d3b-4c71-9a2e-1b6d7e4f3a10",
+  "createdAt": "2026-10-03T23:34:59.694Z",
+  "settings": {
+    "name": "Noodle",
+    "movement": "hops around happily",
+    "behaviours": ["waves hello", null],
+    "sound": "hii"
+  },
+  "bounds": {
+    "minX": -60,
+    "minY": -86,
+    "maxX": 86,
+    "maxY": 100
+  },
+  "parts": [
+    {
+      "id": "p0",
+      "points": [
+        [-60, -17],
+        [-60, 46],
+        [-55, 58],
+        [-44, 64],
+        [-9, 64],
+        [11, 56],
+        [29, 44],
+        [42, 30],
+        [56, 3],
+        [60, -22],
+        [59, -33],
+        [46, -54],
+        [28, -63],
+        [14, -64],
+        [5, -63],
+        [-32, -45],
+        [-49, -24],
+        [-60, -15]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": null,
+      "pivot": [0, 0],
+      "role": "body",
+      "moves": false,
+      "z": 0
+    },
+    {
+      "id": "p1",
+      "points": [
+        [-12, -3],
+        [-3, -1],
+        [12, 6]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": "p0",
+      "pivot": [-12, -3],
+      "role": "eye",
+      "moves": false,
+      "z": 1
+    },
+    {
+      "id": "p2",
+      "points": [
+        [-46, -62],
+        [-29, -48]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": "p0",
+      "pivot": [-29, -48],
+      "role": "decoration",
+      "moves": false,
+      "z": 2
+    },
+    {
+      "id": "p3",
+      "points": [
+        [12, -66],
+        [28, -84],
+        [32, -86]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": "p0",
+      "pivot": [12, -66],
+      "role": "decoration",
+      "moves": true,
+      "z": 3
+    },
+    {
+      "id": "p4",
+      "points": [
+        [56, 11],
+        [67, 11],
+        [86, 20]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": "p0",
+      "pivot": [56, 11],
+      "role": "arm",
+      "moves": true,
+      "z": 4
+    },
+    {
+      "id": "p5",
+      "points": [
+        [5, 62],
+        [6, 88],
+        [9, 98],
+        [10, 99],
+        [13, 100]
+      ],
+      "color": "#26314F",
+      "width": 7,
+      "parent": "p0",
+      "pivot": [5, 62],
+      "role": "leg",
+      "moves": true,
+      "z": 5
+    }
+  ],
+  "locomotion": {
+    "type": "hop",
+    "gait": [
+      {
+        "part": "p5",
+        "rotate": {
+          "amp": 20,
+          "freq": 2,
+          "phase": 0
+        }
+      },
+      {
+        "part": "p4",
+        "rotate": {
+          "amp": 15,
+          "freq": 2,
+          "phase": 0.5
+        }
+      }
+    ]
+  },
+  "idles": [
+    {
+      "name": "waves hello",
+      "source": "waves hello",
+      "duration": 2.5,
+      "tracks": [
+        {
+          "part": "p4",
+          "rotate": {
+            "amp": 40,
+            "freq": 1.5,
+            "phase": 0
+          }
+        },
+        {
+          "part": "p3",
+          "rotate": {
+            "amp": 10,
+            "freq": 3,
+            "phase": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "antenna boing",
+      "source": "invented",
+      "duration": 2,
+      "tracks": [
+        {
+          "part": "p3",
+          "scale": {
+            "amp": 0.25,
+            "freq": 2,
+            "phase": 0
+          }
+        },
+        {
+          "part": "p5",
+          "offset": {
+            "ax": 0,
+            "ay": -8,
+            "freq": 2,
+            "phase": 0
+          }
+        }
+      ]
+    }
+  ],
+  "sound": {
+    "text": "hii",
+    "voice": {
+      "voiceId": "21m00Tcm4TlvDq8ikWAM",
+      "stability": 0.4,
+      "style": 0.3,
+      "speed": 1.1,
+      "playbackRate": 1.25
+    },
+    "audioUrl": null
+  },
+  "personality": {
+    "restSeconds": 4,
+    "speakEverySeconds": 25,
+    "speedPxPerSec": 60
+  }
+}

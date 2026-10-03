@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Draw a creature</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #E4E8F6;
+    --paper: #FFFFFF;
+    --ink: #26314F;
+    --ink-soft: #5C6688;
+    --marigold: #F2B134;
+    --berry: #C8413A;
+    --line: #C9CFE6;
+    --hand: "Gaegu", "Comic Sans MS", "Chalkboard SE", cursive;
+    --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 20px 56px; }
+  h1 { font-family: var(--hand); font-size: 2.8rem; line-height: 1; margin: 0 0 6px; }
+  h2 { font-family: var(--hand); font-size: 1.8rem; line-height: 1.1; margin: 0 0 10px; }
+  .lede { margin: 0 0 22px; color: var(--ink-soft); max-width: 60ch; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; align-items: start; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: center; margin-bottom: 12px; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--line); cursor: pointer; padding: 0; }
+  .swatch[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--ink); }
+  .width-control { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); }
+  .width-control input { width: 110px; accent-color: var(--ink); }
+  .tool-btn { font: inherit; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); border-radius: 999px; padding: 4px 14px; cursor: pointer; }
+  .tool-btn:disabled { opacity: .4; cursor: default; }
+  .count { font-family: var(--hand); font-size: 1.4rem; margin-left: auto; }
+  .count.full { color: var(--berry); }
+
+  .paper {
+    position: relative; aspect-ratio: 1; border: 2px solid var(--ink); border-radius: 22px; overflow: hidden;
+    background-color: var(--paper);
+    background-image: radial-gradient(var(--line) 1.2px, transparent 1.4px);
+    background-size: 22px 22px;
+  }
+  #draw { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+  .hint { margin: 10px 0 0; color: var(--ink-soft); font-size: .95rem; }
+
+  form { display: grid; gap: 14px; }
+  .field label { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 4px; }
+  .field .opt { font-weight: 400; color: var(--ink-soft); }
+  .field input { width: 100%; font: inherit; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 12px; padding: 9px 12px; }
+  .field input:focus { outline: none; border-color: var(--ink); }
+  .field small { display: block; color: var(--ink-soft); margin-top: 3px; font-size: .85rem; }
+  .counter.limit { color: var(--berry); }
+
+  .make {
+    font-family: var(--hand); font-size: 1.7rem; line-height: 1; color: var(--ink);
+    background: var(--marigold); border: 2px solid var(--ink); border-radius: 16px;
+    padding: 12px 18px 10px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); margin-top: 4px;
+  }
+  .make:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .error { color: var(--berry); font-weight: 700; min-height: 1.5em; margin: 0; }
+
+  :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
+
+  #result { margin-top: 36px; display: none; }
+  #result.show { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 880px) { #result.show { grid-template-columns: 1fr; } }
+  #preview { width: 260px; height: 260px; background: var(--paper); border: 2px solid var(--ink); border-radius: 18px; display: block; }
+  .preview-note { color: var(--ink-soft); font-size: .9rem; margin: 8px 0 0; }
+  .json-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .json-head h2 { margin: 0 auto 0 0; }
+  pre { margin: 0; background: var(--ink); color: #E9ECF8; border-radius: 16px; padding: 16px; max-height: 420px; overflow: auto; font-size: .82rem; line-height: 1.45; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Draw a creature</h1>
+  <p class="lede">Every stroke becomes one part of your creature, up to 8. Your biggest stroke becomes the body, and everything else can wiggle, flap, or walk.</p>
+
+  <div class="layout">
+    <section aria-label="Drawing">
+      <div class="toolbar">
+        <div class="swatches" id="swatches" role="group" aria-label="Pen color"></div>
+        <div class="width-control">
+          <label for="width">Thickness</label>
+          <input type="range" id="width" min="2" max="20" value="8">
+        </div>
+        <button class="tool-btn" id="undo" type="button">Undo</button>
+        <button class="tool-btn" id="clear" type="button">Clear</button>
+        <span class="count" id="count" aria-live="polite">0 of 8 parts</span>
+      </div>
+      <div class="paper"><canvas id="draw" aria-label="Drawing canvas"></canvas></div>
+      <p class="hint">Tip: draw the body as one big shape, then add legs, eyes, a tail as separate strokes. Ctrl+Z undoes.</p>
+    </section>
+
+    <section aria-label="Creature details">
+      <form id="details" novalidate>
+        <div class="field">
+          <label for="name">Name <span class="counter" id="nameCount">0/16</span></label>
+          <input id="name" maxlength="16" autocomplete="off" placeholder="Sir Noodle" required>
+        </div>
+        <div class="field">
+          <label for="movement">How it moves <span class="opt">optional</span></label>
+          <input id="movement" autocomplete="off" placeholder="waddles proudly">
+        </div>
+        <div class="field">
+          <label for="behaviour1">Something it does <span class="opt">optional</span></label>
+          <input id="behaviour1" autocomplete="off" placeholder="bows dramatically">
+        </div>
+        <div class="field">
+          <label for="behaviour2">Something else it does <span class="opt">optional</span></label>
+          <input id="behaviour2" autocomplete="off" placeholder="spins its tail">
+        </div>
+        <div class="field">
+          <label for="sound">What it says <span class="counter" id="soundCount">0/19</span></label>
+          <input id="sound" maxlength="19" autocomplete="off" placeholder="Kneel!">
+          <small>Real words or nonsense. Leave it blank for a silent creature.</small>
+        </div>
+        <p class="error" id="error" role="alert"></p>
+        <button class="make" type="submit">Bring it to life</button>
+      </form>
+    </section>
+  </div>
+
+  <section id="result" aria-label="Creature output">
+    <div>
+      <h2>What the world sees</h2>
+      <canvas id="preview" width="520" height="520"></canvas>
+      <p class="preview-note">Normalized to the 200 × 200 box. The cross is the body's center (0, 0), the dashed box is <code>bounds</code>.</p>
+    </div>
+    <div>
+      <div class="json-head">
+        <h2>Creature JSON</h2>
+        <button class="tool-btn" id="copy" type="button">Copy</button>
+        <button class="tool-btn" id="download" type="button">Download</button>
+      </div>
+      <pre id="json"></pre>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ===================== Config (matches CREATURE_SPEC v2) ===================== */
+const MAX_PARTS = 8;          // 1 body + up to 7 others
+const MAX_POINTS = 20;        // points per part after simplifying
+const HALF_BOX = 100;         // drawing fits roughly a 200 x 200 box around the body center
+const CANVAS_SIZE = 500;      // logical drawing space; independent of screen size
+const COLORS = ["#26314F", "#C8413A", "#F2B134", "#4E9A63", "#3D7DD8", "#9B5DE5", "#F28AB2", "#8A5A3B"];
+
+/* ===================== Integration hook ===================== */
+// Called with the draft creature when the user clicks "Bring it to life".
+// Next step: POST it to your backend, which runs Gemini, the random rolls and ElevenLabs.
+function onCreatureReady(draft) {
+  // fetch("/api/creatures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+  console.log("Creature draft:", draft);
+}
+
+/* ===================== State ===================== */
+const canvas = document.getElementById("draw");
+const ctx = canvas.getContext("2d");
+let strokes = [];      // { points: [[x,y],...], color, width } in logical canvas space
+let current = null;
+let penColor = COLORS[0];
+let penWidth = 8;
+let lastDraft = null;
+
+/* ===================== Canvas setup ===================== */
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  redraw();
+}
+window.addEventListener("resize", resizeCanvas);
+
+function toLogical(e) {
+  const rect = canvas.getBoundingClientRect();
+  return [
+    (e.clientX - rect.left) / rect.width * CANVAS_SIZE,
+    (e.clientY - rect.top) / rect.height * CANVAS_SIZE
+  ];
+}
+
+function drawStroke(c, points, color, width) {
+  c.strokeStyle = color;
+  c.fillStyle = color;
+  c.lineWidth = width;
+  c.lineCap = "round";
+  c.lineJoin = "round";
+  if (points.length === 1) {
+    c.beginPath();
+    c.arc(points[0][0], points[0][1], width / 2, 0, Math.PI * 2);
+    c.fill();
+    return;
+  }
+  c.beginPath();
+  c.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) c.lineTo(points[i][0], points[i][1]);
+  c.stroke();
+}
+
+function redraw() {
+  const s = canvas.width / CANVAS_SIZE;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+
+  strokes.forEach(st => drawStroke(ctx, st.points, st.color, st.width));
+  if (current) drawStroke(ctx, current.points, current.color, current.width);
+
+  // Label the stroke that will become the body
+  const bodyIdx = findBodyIndex(strokes);
+  if (bodyIdx !== -1 && !current) {
+    const bb = bbox(strokes[bodyIdx].points);
+    const x = (bb.minX + bb.maxX) / 2;
+    const y = Math.max(22, bb.minY - strokes[bodyIdx].width / 2 - 12);
+    ctx.font = '700 20px Gaegu, "Comic Sans MS", cursive';
+    const w = ctx.measureText("body").width + 14;
+    ctx.fillStyle = "#F2B134";
+    roundRect(ctx, x - w / 2, y - 15, w, 22, 11);
+    ctx.fill();
+    ctx.fillStyle = "#26314F";
+    ctx.textAlign = "center";
+    ctx.fillText("body", x, y + 2);
+  }
+}
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
+/* ===================== Drawing input ===================== */
+canvas.addEventListener("pointerdown", e => {
+  if (strokes.length >= MAX_PARTS) {
+    showError("That's the 8-part maximum. Undo a stroke to draw a new one.");
+    return;
+  }
+  canvas.setPointerCapture(e.pointerId);
+  current = { points: [toLogical(e)], color: penColor, width: penWidth };
+  redraw();
+});
+
+canvas.addEventListener("pointermove", e => {
+  if (!current) return;
+  const p = toLogical(e);
+  const last = current.points[current.points.length - 1];
+  if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= 2) {
+    current.points.push(p);
+    redraw();
+  }
+});
+
+function endStroke() {
+  if (!current) return;
+  strokes.push(current);
+  current = null;
+  updateUI();
+}
+canvas.addEventListener("pointerup", endStroke);
+canvas.addEventListener("pointercancel", endStroke);
+
+/* ===================== Toolbar ===================== */
+const swatchBox = document.getElementById("swatches");
+COLORS.forEach((col, i) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "swatch";
+  b.style.background = col;
+  b.setAttribute("aria-label", "Color " + col);
+  b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+  b.addEventListener("click", () => {
+    penColor = col;
+    swatchBox.querySelectorAll(".swatch").forEach(s => s.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", "true");
+  });
+  swatchBox.appendChild(b);
+});
+
+document.getElementById("width").addEventListener("input", e => { penWidth = Number(e.target.value); });
+document.getElementById("undo").addEventListener("click", undo);
+document.getElementById("clear").addEventListener("click", () => { strokes = []; updateUI(); });
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && document.activeElement.tagName !== "INPUT") {
+    e.preventDefault();
+    undo();
+  }
+});
+function undo() { strokes.pop(); updateUI(); }
+
+function updateUI() {
+  const count = document.getElementById("count");
+  count.textContent = `${strokes.length} of ${MAX_PARTS} parts`;
+  count.classList.toggle("full", strokes.length >= MAX_PARTS);
+  document.getElementById("undo").disabled = strokes.length === 0;
+  document.getElementById("clear").disabled = strokes.length === 0;
+  if (strokes.length < MAX_PARTS) clearErrorIf("8-part");
+  redraw();
+}
+
+/* ===================== Text fields ===================== */
+function bindCounter(inputId, counterId, max) {
+  const input = document.getElementById(inputId);
+  const counter = document.getElementById(counterId);
+  const update = () => {
+    counter.textContent = `${input.value.length}/${max}`;
+    counter.classList.toggle("limit", input.value.length >= max);
+  };
+  input.addEventListener("input", update);
+  update();
+}
+bindCounter("name", "nameCount", 16);
+bindCounter("sound", "soundCount", 19);
+
+const clean = id => {
+  const v = document.getElementById(id).value.trim();
+  return v === "" ? null : v;
+};
+
+/* ===================== Geometry helpers ===================== */
+function bbox(points) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+// "Largest stroke" = biggest bounding-box area (padded by stroke width, so a thin line isn't zero).
+function findBodyIndex(list) {
+  let best = -1, bestScore = -1;
+  list.forEach((s, i) => {
+    const b = bbox(s.points);
+    const score = (b.maxX - b.minX + s.width) * (b.maxY - b.minY + s.width);
+    if (score > bestScore) { bestScore = score; best = i; }
+  });
+  return best;
+}
+
+// Ramer-Douglas-Peucker line simplification
+function rdp(points, eps) {
+  if (points.length < 3) return points.slice();
+  const [ax, ay] = points[0], [bx, by] = points[points.length - 1];
+  const len = Math.hypot(bx - ax, by - ay);
+  let maxDist = -1, idx = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [px, py] = points[i];
+    const d = len === 0
+      ? Math.hypot(px - ax, py - ay)
+      : Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
+    if (d > maxDist) { maxDist = d; idx = i; }
+  }
+  if (maxDist <= eps) return [points[0], points[points.length - 1]];
+  const left = rdp(points.slice(0, idx + 1), eps);
+  const right = rdp(points.slice(idx), eps);
+  return left.slice(0, -1).concat(right);
+}
+
+// Simplify until the stroke has at most MAX_POINTS points
+function simplify(points) {
+  let eps = 0.75, out = rdp(points, eps);
+  while (out.length > MAX_POINTS) { eps *= 1.5; out = rdp(points, eps); }
+  return out;
+}
+
+/* ===================== Build the draft creature ===================== */
+// Fills what the creation-side drawing tool owns: settings, parts[].points/color/width, bounds.
+// The body is marked here (spec body rule). Other parts' parent/pivot/z are left for the rigging code,
+// and role/moves for Gemini.
+function buildDraft() {
+  const bodyIdx = findBodyIndex(strokes);
+  const bb = bbox(strokes[bodyIdx].points);
+  const cx = (bb.minX + bb.maxX) / 2;
+  const cy = (bb.minY + bb.maxY) / 2;
+
+  let maxExtent = 0;
+  strokes.forEach(s => s.points.forEach(([x, y]) => {
+    maxExtent = Math.max(maxExtent, Math.abs(x - cx), Math.abs(y - cy));
+  }));
+  const scale = maxExtent > 0 ? HALF_BOX / maxExtent : 1;
+
+  const parts = strokes.map((s, i) => {
+    const local = s.points.map(([x, y]) => [(x - cx) * scale, (y - cy) * scale]);
+    let pts = simplify(local).map(([x, y]) => [Math.round(x), Math.round(y)]);
+    if (pts.length === 1) pts.push([pts[0][0] + 1, pts[0][1] + 1]); // a dot still needs 2 points
+    const isBody = i === bodyIdx;
+    return {
+      id: "p" + i,
+      points: pts,
+      color: s.color,
+      width: Math.max(1, Math.round(s.width * scale)),
+      parent: null,                       // rigging fills this for non-body parts
+      pivot: isBody ? [0, 0] : null,      // rigging fills this for non-body parts
+      role: isBody ? "body" : null,       // Gemini fills this for non-body parts
+      moves: isBody ? false : null,       // Gemini fills this for non-body parts
+      z: isBody ? 0 : null                // rigging fills this for non-body parts
+    };
+  });
+
+  const all = parts.flatMap(p => p.points);
+  const b = bbox(all);
+
+  const id = (crypto.randomUUID && crypto.randomUUID()) ||
+    "c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  return {
+    version: 2,
+    id,
+    createdAt: new Date().toISOString(),
+    settings: {
+      name: clean("name"),
+      movement: clean("movement"),
+      behaviours: [clean("behaviour1"), clean("behaviour2")],
+      sound: clean("sound")
+    },
+    bounds: { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY },
+    parts
+  };
+}
+
+/* ===================== Submit ===================== */
+const errorEl = document.getElementById("error");
+function showError(msg) { errorEl.textContent = msg; }
+function clearErrorIf(fragment) { if (errorEl.textContent.includes(fragment)) errorEl.textContent = ""; }
+
+document.getElementById("details").addEventListener("submit", e => {
+  e.preventDefault();
+  if (strokes.length === 0) return showError("Draw your creature first.");
+  if (!clean("name")) {
+    document.getElementById("name").focus();
+    return showError("Give your creature a name.");
+  }
+  showError("");
+  lastDraft = buildDraft();
+  showResult(lastDraft);
+  onCreatureReady(lastDraft);
+});
+
+/* ===================== Output panel ===================== */
+function prettyJSON(obj) {
+  // Keep [x, y] pairs on one line so the points stay readable
+  return JSON.stringify(obj, null, 2).replace(/\[\s+(-?\d+(?:\.\d+)?),\s+(-?\d+(?:\.\d+)?)\s+\]/g, "[$1, $2]");
+}
+
+function showResult(draft) {
+  document.getElementById("json").textContent = prettyJSON(draft);
+  drawPreview(draft);
+  const result = document.getElementById("result");
+  result.classList.add("show");
+  result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function drawPreview(draft) {
+  const pv = document.getElementById("preview");
+  const c = pv.getContext("2d");
+  const s = pv.width / 260;              // preview shows local space from -130 to 130
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, pv.width, pv.height);
+  c.setTransform(s, 0, 0, s, 130 * s, 130 * s);
+
+  const { minX, minY, maxX, maxY } = draft.bounds;
+  c.setLineDash([4, 4]);
+  c.strokeStyle = "#9AA3C4";
+  c.lineWidth = 1;
+  c.strokeRect(minX, minY, maxX - minX, maxY - minY);
+  c.setLineDash([]);
+
+  draft.parts.forEach(p => drawStroke(c, p.points, p.color, p.width));
+
+  c.strokeStyle = "#C8413A";
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.moveTo(-8, 0); c.lineTo(8, 0);
+  c.moveTo(0, -8); c.lineTo(0, 8);
+  c.stroke();
+
+  // Name label where the world will draw it: centered at x = 0, just above minY
+  c.fillStyle = "#26314F";
+  c.font = '700 16px Gaegu, "Comic Sans MS", cursive';
+  c.textAlign = "center";
+  c.fillText(draft.settings.name, 0, minY - 12);
+}
+
+document.getElementById("copy").addEventListener("click", async e => {
+  if (!lastDraft) return;
+  const text = prettyJSON(lastDraft);
+  try { await navigator.clipboard.writeText(text); e.target.textContent = "Copied"; }
+  catch { e.target.textContent = "Copy failed"; }
+  setTimeout(() => (e.target.textContent = "Copy"), 1500);
+});
+
+document.getElementById("download").addEventListener("click", () => {
+  if (!lastDraft) return;
+  const blob = new Blob([prettyJSON(lastDraft)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (lastDraft.settings.name || "creature").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ===================== Start ===================== */
+resizeCanvas();
+updateUI();
+</script>
+</body>
+</html>
