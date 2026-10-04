@@ -265,10 +265,10 @@ The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log
 
 ### Battle rules (summary)
 
-- Each side brings 1 to 3 creatures in the order they picked them. One creature per side is on the field at a time.
+- Each side brings **exactly 3** creatures, in the order they picked them. A player with fewer than 3 creatures can't battle yet. The engine rejects any team that isn't exactly 3. One creature per side is on the field at a time.
 - Both creatures attack on their own timers, at the same time. Each attack can hit, miss or crit (seeded randomness).
 - When a creature faints, that side's next creature enters. The survivor stays in **with the hp it has left**.
-- The battle ends when one side has no creatures left (`knockout`), when a player disconnects (`forfeit`), or after 90 seconds (`timeout`). On timeout, the side with the larger share of its total hp left wins; equal shares are a `draw`.
+- The battle ends when one side has no creatures left (`knockout`), when a player disconnects (`forfeit`), or after 2 minutes (120 seconds, `timeout`). On timeout, the side with the larger share of its total hp left wins; equal shares are a `draw`.
 - The exact numbers (hp, damage, attack speed from `size` and `baseAttack`, miss and crit chance) live in the engine code and are tuned with the simulator.
 
 ### Shape
@@ -305,7 +305,7 @@ The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log
 ```
 
 - `a` is the player who sent the invite, `b` is the one who accepted. The replay always draws the **viewer's** side on the left and mirrors the opponent on the right.
-- `sides.*.team` is a snapshot of the stats at battle time, so the replay and old battles don't change if a creature's stats change later. The replay loads each creature's drawing by its id.
+- `sides.*.team` always has exactly 3 entries (the example shows one each to stay short). It is a snapshot of the stats at battle time, so the replay and old battles don't change if a creature's stats change later. The replay loads each creature's drawing by its id.
 - `t` is seconds from `startAt`, rounded to 0.01. Events are sorted by `t`. Events with the same `t` play in list order.
 
 ### Events
