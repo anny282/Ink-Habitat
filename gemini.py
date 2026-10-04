@@ -32,6 +32,17 @@ def stroke_length(points):
     return sum(math.dist(a, b) for a, b in zip(points, points[1:]))
 
 
+def sharp_corners(points):
+    """Corners where the stroke turns back by more than 100 degrees: spikes, teeth, claws, zigzags."""
+    count = 0
+    for a, b, c in zip(points, points[1:], points[2:]):
+        u, v = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+        lu, lv = math.hypot(*u), math.hypot(*v)
+        if lu >= 4 and lv >= 4 and (u[0] * v[0] + u[1] * v[1]) / (lu * lv) < math.cos(math.radians(100)):
+            count += 1
+    return count
+
+
 def describe(part, body_box):
     minX, minY, maxX, maxY = bbox(part["points"])
     w, h = maxX - minX, maxY - minY
@@ -59,6 +70,7 @@ def describe(part, body_box):
         "center": [round(cx), round(cy)],
         "size": [round(w), round(h)],
         "length": round(stroke_length(part["points"])),
+        "sharp_corners": sharp_corners(part["points"]),
         "attached_to": part.get("parent"),
     }
 
@@ -69,13 +81,19 @@ def summarize(parts):
     return body["id"], [describe(p, body_box) for p in parts if p is not body]
 
 
+def body_line(parts):
+    body = body_of(parts)
+    x0, y0, x1, y1 = bbox(body["points"])
+    return f'size {round(x1 - x0)} x {round(y1 - y0)}, {sharp_corners(body["points"])} sharp corners'
+
+
 # ---------- prompt and API call ----------
 
 PROMPT = """You are animating a creature a child drew. Decide which drawn stroke is which body part
 and how the creature moves. Reply with JSON only.
 
 Coordinates: origin (0,0) is the center of the body, x goes right, y goes DOWN (negative y = up).
-The body stroke is "{body_id}". It never moves. Every other stroke:
+The body stroke is "{body_id}" ({body}). It never moves. Every other stroke:
 {parts}
 
 What the user typed (null means they left it blank, so invent something fun and fitting):
@@ -106,16 +124,24 @@ Rules:
             "scale": {{"amp": 0-0.4, "freq": hz, "phase": 0-1}},
             "offset": {{"ax": px, "ay": px, "freq": hz, "phase": 0-1}}}}
   Each channel is optional. Only target parts with moves = true, never the body.
-- baseAttack: a whole number 1-10 for how strong its attacks look. Claws, teeth, horns, spikes and a fierce
-  name push it up; round, soft shapes and a cute name push it down. Most creatures land between 3 and 8.
+- baseAttack: a whole number 1-10 for how dangerous it looks. Score it, don't guess:
+  start at 5, then
+    +2 if it has sharp parts: strokes with several sharp_corners (spikes, teeth, claws, horns, zigzags)
+    +2 if the name, movement or behaviours sound fierce (bites, roars, charges, stomps, Fang, Rex, Doom...)
+    +1 if it has many limbs or very long ones (4+ legs/arms, big wings or tail)
+    -1 if it's all smooth round shapes with almost no sharp_corners
+    -2 if the name or behaviours clearly sound cute or sleepy (naps, hugs, cuddles, Mochi, Puff, Bubbles...)
+  Plain words (walks, jumps, waves, nods, runs) change nothing. Clamp to 1-10. A smooth blob named Mochi
+  that naps is 2; a spiky clawed thing named Doomfang that bites is 10; most doodles land 4 to 7.
 - Limits: rotate amp 0-60, scale amp 0-0.4, offset -30 to 30, freq 0.2-4, phase 0-1, duration 1-5 seconds.
 """
 
 
-def build_prompt(settings, body_id, summary):
+def build_prompt(settings, body_id, summary, body="no details"):
     b1, b2 = (settings.get("behaviours") or [None, None])[:2]
     return PROMPT.format(
         body_id=body_id,
+        body=body,
         parts="\n".join(json.dumps(s) for s in summary) or "(none, the creature is just a body)",
         name=json.dumps(settings.get("name")),
         movement=json.dumps(settings.get("movement")),
@@ -312,7 +338,7 @@ def enrich(creature):
     """Fill role, moves, locomotion, idles and battle.baseAttack. Never raises: falls back to rules on any failure."""
     body_id, summary = summarize(creature["parts"])
     try:
-        ai = call_gemini(build_prompt(creature["settings"], body_id, summary))
+        ai = call_gemini(build_prompt(creature["settings"], body_id, summary, body_line(creature["parts"])))
         if not isinstance(ai, dict):
             raise ValueError("Gemini did not return a JSON object")
     except Exception as e:  # any failure: still save a creature that moves

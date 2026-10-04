@@ -18,20 +18,22 @@ READY = 80           # after entering, wait this long before the first attack
 ENTER_GAP = 120      # after a faint, the next creature enters this much later
 END_GAP = 100        # after the last faint, the end event (victory moment) this much later
 
-# Tuned with battle_sim.py (small vs big, tiny vs huge and small vs medium all land near 50/50;
-# battles average about a minute). Bigger creatures have more hp but attack slower: time between
-# attacks is proportional to hp, so size changes the fighting style, not the odds.
-HP_BASE = 80
-HP_PER_SIZE = 1.5            # size 5..100 -> 88..230 hp
-SECONDS_PER_HP = 1 / 120     # time between attacks = maxHp / 120 seconds (about 0.7 s to 1.9 s)
-DAMAGE_BASE = 10
-DAMAGE_PER_ATTACK = 0.35     # baseAttack 1..10 -> 10.4..13.5 damage before variance; matters, doesn't decide
+# Every creature has the same hp and attacks at the same speed. Size changes the odds instead:
+# big creatures crit more often, small creatures dodge more often. The dodge chance is derived from the
+# crit chance so that for ANY two sizes, both sides expect the same damage per attack (big hits harder
+# on average when it lands, small is harder to land on). Tuned with battle_sim.py.
+SIZE_RANGE = (15, 85)        # most drawings land in here; sizes outside count as the nearest end
+HP = 150
+ATTACK_SECONDS = 1.3         # time between attacks, same for everyone
+ATTACK_JITTER = 0.2          # each gap is +-20%, or equal speeds lock in step and both last creatures
+                             # often fall together (a draw, so no prize)
+CRIT_CHANCE = (0.03, 0.15)   # attacker's crit chance at size 15 .. 85
+CRIT_MULTIPLIER = 2.0
+MIN_DODGE = 0.02             # the biggest creature's dodge chance; smaller ones dodge more (about 12% at 15)
+DAMAGE_BASE = 15
+DAMAGE_PER_ATTACK = 0.5      # baseAttack 1..10 -> 15.5..20 before crits and variance; matters, doesn't decide
 DAMAGE_SPREAD = 0.3          # each hit is +-30%
-FIRST_ATTACK = (0.4, 0.7)    # first attack after READY + this many intervals. Below 1 on purpose: it makes
-                             # up for overkill (a slow attacker wastes more time on a target's last sliver)
-MISS_CHANCE = 0.12
-CRIT_CHANCE = 0.15
-CRIT_MULTIPLIER = 1.5
+FIRST_ATTACK = (0.3, 0.6)    # first attack after READY + this many intervals, a bit random so sides don't sync
 
 
 # ---------- stats ----------
@@ -42,13 +44,32 @@ def clamp_int(v, lo, hi, default):
     return round(min(hi, max(lo, v)))
 
 
+def size_fraction(size):
+    """0 for the smallest size that counts (15 or less), 1 for the biggest (85 or more)."""
+    lo, hi = SIZE_RANGE
+    return (min(hi, max(lo, size)) - lo) / (hi - lo)
+
+
 def max_hp(size):
-    return round(HP_BASE + HP_PER_SIZE * size)
+    return HP
 
 
-def attack_interval(hp):
+def attack_interval(size):
     """Centiseconds between attacks."""
-    return round(100 * hp * SECONDS_PER_HP)
+    return round(100 * ATTACK_SECONDS)
+
+
+def crit_chance(size):
+    lo, hi = CRIT_CHANCE
+    return lo + (hi - lo) * size_fraction(size)
+
+
+def dodge_chance(size):
+    """Chosen so (1 + crit * (CRIT_MULTIPLIER - 1)) / (1 - dodge) is the same for every size: then
+    attacker a against target b expects exactly what b expects against a."""
+    extra = CRIT_MULTIPLIER - 1
+    balance = (1 + CRIT_CHANCE[1] * extra) / (1 - MIN_DODGE)
+    return 1 - (1 + crit_chance(size) * extra) / balance
 
 
 def base_damage(base_attack):
@@ -99,7 +120,7 @@ def simulate(team_a, team_b, rng):
     def arm(side, t):
         """Restart this side's attack timer: a new matchup starts fresh for both creatures."""
         timer[side] += 1
-        interval = attack_interval(current(side)["maxHp"])
+        interval = attack_interval(current(side)["size"])
         push(t + READY + round(rng.uniform(*FIRST_ATTACK) * interval), 2, "attack", side, timer[side])
 
     def emit(t, **event):
@@ -134,14 +155,15 @@ def simulate(team_a, team_b, rng):
                 continue                    # no attack whose hit would land after the time limit
             me, target = current(side), current(foe)
             emit(t, type="attack", side=side, creature=me["creature"], target=target["creature"])
-            if rng.random() < MISS_CHANCE:
+            if rng.random() < dodge_chance(target["size"]):
                 outcome = None
             else:
-                crit = rng.random() < CRIT_CHANCE
+                crit = rng.random() < crit_chance(me["size"])
                 damage = base_damage(me["baseAttack"]) * rng.uniform(1 - DAMAGE_SPREAD, 1 + DAMAGE_SPREAD)
                 outcome = (max(1, round(damage * (CRIT_MULTIPLIER if crit else 1))), crit)
             push(t + HIT_DELAY, 0, "hit", foe, (slot[foe], me["creature"], outcome))
-            push(t + attack_interval(me["maxHp"]), 2, "attack", side, data)
+            gap = attack_interval(me["size"]) * rng.uniform(1 - ATTACK_JITTER, 1 + ATTACK_JITTER)
+            push(t + round(gap), 2, "attack", side, data)
 
         elif kind == "hit":
             target_slot, by, outcome = data

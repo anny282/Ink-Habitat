@@ -1,5 +1,6 @@
 """Local Creature World server. Run with: python3 server.py"""
 import json
+import math
 import os
 import random
 import re
@@ -12,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import auth
+import battle
 import db
 import elevenlabs
 import gemini
@@ -23,7 +25,7 @@ FRONTEND = BASE / "frontend"
 AUDIO = BASE / "data" / "audio"
 AUDIO.mkdir(parents=True, exist_ok=True)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html", "/friends.html"}
+PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html", "/friends.html", "/battle.html"}
 app = FastAPI(title="StromHacks Creature World")
 
 
@@ -74,12 +76,41 @@ def validate(creature):
     return creature
 
 
-def battle_size(battle):
-    """The drawing tool measures size; clamp it (spec clamp table: 5 to 100, default 40)."""
+def canvas_size(battle):
+    """How big the creature was drawn: the drawing tool's measure (spec: 100 * sqrt(inkW * inkH) / 500),
+    clamped to 5..100. None if it wasn't sent (old creatures, or a stale copy of the drawing page)."""
     size = battle.get("size") if isinstance(battle, dict) else None
     if isinstance(size, bool) or not isinstance(size, (int, float)) or size != size:
-        return 40
+        return None
     return round(min(100, max(5, size)))
+
+
+# battle.size = 5 + 95 * (half how big it was drawn + 30% body bulk + 20% ink weight). Each part is spread
+# over the range real doodles cover, so sizes don't bunch up. Unknown canvas size counts as the middle.
+SIZE_WEIGHTS = {"canvas": 0.5, "bulk": 0.3, "ink": 0.2}
+SIZE_RANGES = {"canvas": (20, 70), "bulk": (0.05, 0.5), "ink": (0.08, 0.25)}
+
+
+def polygon_area(points):
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(points, points[1:] + points[:1]))) / 2
+
+
+def size_parts(creature, canvas):
+    """The three measures behind battle.size, each 0..1. Bulk and ink are relative to the creature's own
+    box, so they work on saved (normalized) drawings too."""
+    parts = creature["parts"]
+    xs = [x for p in parts for x, _ in p["points"]]
+    ys = [y for p in parts for _, y in p["points"]]
+    box = max(1, (max(xs) - min(xs)) * (max(ys) - min(ys)))
+    body = next((p for p in parts if p.get("role") == "body"), parts[0])
+    ink = sum(math.dist(a, b) * (p.get("width") or 6) for p in parts for a, b in zip(p["points"], p["points"][1:]))
+    raw = {"canvas": 45 if canvas is None else canvas, "bulk": polygon_area(body["points"]) / box, "ink": ink / box}
+    return {k: min(1, max(0, (v - SIZE_RANGES[k][0]) / (SIZE_RANGES[k][1] - SIZE_RANGES[k][0]))) for k, v in raw.items()}
+
+
+def measure_size(creature, canvas):
+    score = size_parts(creature, canvas)
+    return round(5 + 95 * sum(SIZE_WEIGHTS[k] * score[k] for k in SIZE_WEIGHTS))
 
 
 def roll_personality():
@@ -193,7 +224,9 @@ def list_creatures(user=Depends(current_user)):
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     creature = validate(creature)
-    creature["battle"] = {"size": battle_size(creature.get("battle")), "wins": 0}  # wins: only the server counts them
+    canvas = canvas_size(creature.get("battle"))
+    creature["battle"] = {"size": measure_size(creature, canvas), "canvasSize": canvas,
+                          "wins": 0}  # wins: only the server counts them
     rig_parts(creature["parts"])           # parent, pivot, z (Gemini's part summary uses the rig)
     gemini.enrich(creature)                # role, moves, locomotion, idles, battle.baseAttack
     rig_parts(creature["parts"])           # redo z now that roles are known
@@ -240,12 +273,43 @@ def remove_friend(friend_id: str, user=Depends(current_user)):
     return {"removed": friend_id}
 
 
+# ---------- practice battle (one laptop: your creatures against your creatures) ----------
+
+@app.post("/api/practice-battle")
+def practice_battle(body: dict = Body(default=None), user=Depends(current_user)):
+    """Your team (3 creature ids from your farm, in fight order, or random if none are given) against
+    3 random creatures from your farm. Runs the real engine. Nothing is saved."""
+    farm = db.get_creatures(user["id"])
+    if len(farm) < battle.TEAM_SIZE:
+        raise HTTPException(400, f"You need at least {battle.TEAM_SIZE} creatures to battle. Draw a few more!")
+    picks = (body or {}).get("team")
+    if picks is None:
+        team_a = random.sample(farm, battle.TEAM_SIZE)
+    else:
+        by_id = {c["id"]: c for c in farm}
+        if not isinstance(picks, list) or len(picks) != battle.TEAM_SIZE or len(set(map(str, picks))) != battle.TEAM_SIZE:
+            raise HTTPException(400, f"Pick exactly {battle.TEAM_SIZE} different creatures.")
+        if not all(isinstance(i, str) and i in by_id for i in picks):
+            raise HTTPException(400, "You can only pick creatures from your own farm.")
+        team_a = [by_id[i] for i in picks]
+    team_b = random.sample(farm, battle.TEAM_SIZE)
+    log = battle.run_battle(team_a, team_b, random.randrange(2**31))
+    log.update(battleId="practice", startAt=datetime.now(timezone.utc).isoformat(), prize=None)
+    log["sides"]["a"].update(userId=user["id"], name=user["username"])
+    log["sides"]["b"].update(userId=None, name="Practice")
+    return {"log": log, "creatures": {c["id"]: c for c in team_a + team_b}}
+
+
 @app.middleware("http")
 async def login_redirect(request: Request, call_next):
     """Send logged-out visitors of the farm pages to the login page."""
     if request.url.path in PAGES_NEEDING_LOGIN and not auth.read_token(request.cookies.get(auth.COOKIE)):
         return RedirectResponse("/login.html")
-    return await call_next(request)
+    response = await call_next(request)
+    if not request.url.path.startswith(("/api/", "/audio/")):
+        # browsers re-check pages every load; an old cached drawing page once saved creatures without size
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.get("/", include_in_schema=False)

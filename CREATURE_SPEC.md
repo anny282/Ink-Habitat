@@ -103,6 +103,7 @@ The UI turns empty textboxes into `null`. If movement or a behaviour is `null`, 
 
   "battle": {
     "size": 42,
+    "canvasSize": 38,
     "baseAttack": 6,
     "wins": 0
   }
@@ -208,15 +209,16 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 
 `{ "userId", "name" }` of the account that drew the creature, set by the server at creation time from the logged-in user. It never changes. When a creature is won in battle, only its owner in the database changes, so the farm can show "drawn by anny" on a creature someone else now owns. `null` for creatures made before accounts existed.
 
-### `battle` (three fields, three owners)
+### `battle` (four fields)
 
 | Field | Who fills it | Meaning | Range |
 |---|---|---|---|
-| `size` | **drawing tool** | How big the drawing was on the canvas **before** normalizing. `100 * sqrt(inkW * inkH) / 500`, where `inkW` x `inkH` is the bounding box of all strokes in the 500 x 500 logical canvas. A doodle in the corner is small, a drawing that fills the page is near 100. Whole number. | 5 to 100 |
+| `size` | **server** | How big the creature is, for battles. `5 + 95 * (0.5 * drawn + 0.3 * bulk + 0.2 * ink)`, each part 0 to 1: **drawn** is `canvasSize` (20 to 70 maps to 0 to 1; unknown counts as 45), **bulk** is the body outline's area over the creature's box (0.05 to 0.5), **ink** is total stroke length times width over the box (0.08 to 0.25). The exact numbers live in `server.py` (`measure_size`). Whole number. | 5 to 100 |
+| `canvasSize` | **drawing tool** (sent as `battle.size`) | How big the drawing was on the canvas **before** normalizing: `100 * sqrt(inkW * inkH) / 500`, where `inkW` x `inkH` is the bounding box of all strokes in the 500 x 500 logical canvas. A doodle in the corner is small, a drawing that fills the page is near 100. `null` if unknown (older creatures). | 5 to 100 |
 | `baseAttack` | **AI-filled** | How strong its attacks look: claws, teeth, horns, spikes and a fierce name push it up, round soft shapes push it down. Whole number. | 1 to 10 |
 | `wins` | **server** | Battles this creature was on the winning team for. Starts at 0, only the server increments it. More than 5 wins shows a crown. | 0 and up |
 
-`size` and `baseAttack` are raw stats. The battle engine turns them into fighting numbers (hp, damage, attack speed) with formulas that live in the engine code, so they can be tuned without changing saved creatures. The intent: bigger creatures have more hp but attack slower, smaller ones have less hp but attack faster.
+`size` and `baseAttack` are raw stats. The battle engine turns them into fighting numbers (hp, damage, attack speed) with formulas that live in the engine code, so they can be tuned without changing saved creatures. The intent: every creature has the same hp and attack speed. Bigger creatures land critical hits more often; smaller creatures dodge more often. The two are balanced so that no size has an edge, only a different style. The replay draws each fighter at a size that grows with `size`, and shows a dodge for a `miss`.
 
 ## Clamp table (world side always applies)
 
@@ -244,7 +246,7 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 
 ## Data flow
 
-1. **Drawing tool** collects `settings` from the textboxes and outputs `parts` (points, color, width), `bounds`, and `battle.size` (measured before normalizing).
+1. **Drawing tool** collects `settings` from the textboxes and outputs `parts` (points, color, width), `bounds`, and `battle.size` (how big it was drawn, measured before normalizing; the server stores it as `canvasSize` and computes the final `size`).
 2. **Rigging code** fills `parent`, `pivot`, `z`.
 3. **Gemini call** gets `settings` plus a summary of the parts (size, position relative to the body, orientation), and returns JSON only: each part's `role` and `moves`, then `locomotion`, `idles` and `battle.baseAttack`. That's all it decides.
 4. **Backend** validates and clamps the Gemini response, then fills in the rest with plain code: `sound.text` (from the user's input, or `sound: null`), a random `personality`, a random `voice`, `drawnBy` from the logged-in account, and `battle.wins: 0`.

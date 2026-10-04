@@ -9,9 +9,10 @@ def creature(cid, size, base_attack, name=None):
     return {"id": cid, "settings": {"name": name or cid}, "battle": {"size": size, "baseAttack": base_attack, "wins": 0}}
 
 
-PAPER_NUMBERS = {"HP_BASE": 80, "HP_PER_SIZE": 1.5, "SECONDS_PER_HP": 1 / 90, "DAMAGE_BASE": 8,
-                 "DAMAGE_PER_ATTACK": 1.2, "MISS_CHANCE": 0, "CRIT_CHANCE": 0, "DAMAGE_SPREAD": 0,
-                 "FIRST_ATTACK": (0, 0)}
+# Round numbers for the paper check: 100 hp, an attack every 2 s, damage 20 + baseAttack, no crits or dodges.
+PAPER_NUMBERS = {"HP": 100, "ATTACK_SECONDS": 2, "DAMAGE_BASE": 20, "DAMAGE_PER_ATTACK": 1,
+                 "CRIT_CHANCE": (0, 0), "MIN_DODGE": 0, "DAMAGE_SPREAD": 0, "FIRST_ATTACK": (0, 0),
+                 "ATTACK_JITTER": 0}
 
 
 def fixed_numbers(**overrides):
@@ -24,25 +25,38 @@ def fixed_numbers(**overrides):
 
 
 def test_1v1_matches_paper():
-    # A: size 20 -> hp 110, attacks every 1.22 s. B: size 60 -> hp 170, every 1.89 s. Both deal 14.
-    # B needs 8 hits on A: last attack 0.8 + 7 * 1.89 = 14.03, lands 14.33, so A faints at 14.33. B wins.
-    # A's attacks start at 0.8 + k * 1.22: k = 0..11 start before 14.33 (the 12th at 14.22 is mid-dash and
-    # still lands at 14.52), so B takes 12 hits: 170 - 12 * 14 = 2 hp left.
+    # A (baseAttack 5) hits for 25, B (baseAttack 3) for 23, both every 2 s starting at 0.8.
+    # A needs 4 hits: the 4th attack at 6.8 lands 7.1, so B faints at 7.1.
+    # B's 4th attack also started at 6.8 and still lands at 7.1: A has 100 - 4 * 23 = 8 left. A wins.
     restore = fixed_numbers()
     try:
-        a, b = battle.snapshot(creature("A", 20, 5)), battle.snapshot(creature("B", 60, 5))
-        assert (a["maxHp"], b["maxHp"]) == (110, 170)
-        assert (battle.attack_interval(110), battle.attack_interval(170)) == (122, 189)
+        a, b = battle.snapshot(creature("A", 20, 5)), battle.snapshot(creature("B", 70, 3))
+        assert (a["maxHp"], b["maxHp"]) == (100, 100)
+        assert (battle.attack_interval(20), battle.attack_interval(70)) == (200, 200)
         events, result, end = battle.simulate([a], [b], random.Random(1))
     finally:
         restore()
     hits_on_b = [e for e in events if e["type"] == "hit" and e["creature"] == "B"]
     hits_on_a = [e for e in events if e["type"] == "hit" and e["creature"] == "A"]
-    assert all(e["damage"] == 14 and not e["crit"] for e in hits_on_a + hits_on_b)
-    assert len(hits_on_a) == 8 and hits_on_a[-1]["t"] == 14.33 and hits_on_a[-1]["hp"] == 0
-    assert len(hits_on_b) == 12 and hits_on_b[-1]["t"] == 14.52 and hits_on_b[-1]["hp"] == 2
-    assert {"t": 14.33, "type": "faint", "side": "a", "creature": "A"} in events
-    assert result == {"winner": "b", "reason": "knockout"} and end == 1433 + battle.END_GAP
+    assert [e["damage"] for e in hits_on_b] == [25] * 4 and [e["damage"] for e in hits_on_a] == [23] * 4
+    assert [e["t"] for e in hits_on_b] == [1.1, 3.1, 5.1, 7.1] and hits_on_b[-1]["hp"] == 0
+    assert hits_on_a[-1]["t"] == 7.1 and hits_on_a[-1]["hp"] == 8
+    assert not any(e["type"] in ("miss",) or e.get("crit") for e in events)
+    assert {"t": 7.1, "type": "faint", "side": "b", "creature": "B"} in events
+    assert result == {"winner": "a", "reason": "knockout"} and end == 710 + battle.END_GAP
+
+
+def test_size_odds_are_fair():
+    # big crits more, small dodges more, and any two sizes expect the same damage per attack
+    assert battle.crit_chance(85) > battle.crit_chance(40) > battle.crit_chance(15)
+    assert battle.dodge_chance(15) > battle.dodge_chance(40) > battle.dodge_chance(85)
+    assert abs(battle.dodge_chance(85) - battle.MIN_DODGE) < 1e-9
+    extra = battle.CRIT_MULTIPLIER - 1
+    for a in (5, 15, 35, 53, 85, 100):
+        for b in (5, 15, 35, 53, 85, 100):
+            a_on_b = (1 - battle.dodge_chance(b)) * (1 + battle.crit_chance(a) * extra)
+            b_on_a = (1 - battle.dodge_chance(a)) * (1 + battle.crit_chance(b) * extra)
+            assert abs(a_on_b - b_on_a) < 1e-9
 
 
 def team(prefix, stats):
@@ -138,7 +152,7 @@ def test_rejects_bad_teams():
 
 def test_clamps_stats():
     snap = battle.snapshot({"id": "x", "settings": {"name": "X"}, "battle": {"size": 999, "baseAttack": -4}})
-    assert (snap["size"], snap["baseAttack"], snap["maxHp"]) == (100, 1, 230)
+    assert (snap["size"], snap["baseAttack"], snap["maxHp"]) == (100, 1, battle.max_hp(85))
     assert battle.snapshot({"id": "y"})["size"] == 40  # old creature without battle stats
 
 

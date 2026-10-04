@@ -34,12 +34,14 @@ Run `source venv/bin/activate` again in a new terminal before starting the serve
 
 - `frontend/login.html` — sign up and log in.
 - `frontend/friends.html` — your friend code, add friends by code, and remove friends.
+- `frontend/battle.html` — practice battles and the replay. Pick 3 creatures from your farm (or Random) to fight 3 random ones; you need at least 3. `?sample` plays the hand-written log in `frontend/sample-battle.json`; `&at=12.5` opens paused at that second; `&side=b` watches from the other side.
 - `frontend/draw-creature.html` — draw a creature and submit it to the server.
 - `frontend/world.html` — view, animate, and manage saved creatures.
 - `server.py` — local web server, accounts, and creature API.
 - `db.py` — TiDB tables (`users`, `creatures`, `friendships`, `battles`) and queries.
 - `auth.py` — password hashing and signed login cookies.
 - `gemini.py`, `elevenlabs.py` — part roles and animations, and each creature's voice clip.
+- `remeasure_sizes.py` — re-measures `battle.size` for every saved creature after the size formula changes: `python remeasure_sizes.py` shows the changes, `--apply` saves them.
 - `migrate_json.py` — moves creatures saved as JSON files (before TiDB) into an account.
 - `battle.py` — battle engine: `run_battle(teamA, teamB, seed)` turns two teams of 3 into a battle log (spec, "Battle log"). Same teams and seed, same log.
 - `battle_sim.py` — balance simulator for the engine's numbers: `python battle_sim.py`.

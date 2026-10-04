@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Creature Battle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #E4E8F6;
+    --paper: #FFFFFF;
+    --ink: #26314F;
+    --ink-soft: #5C6688;
+    --marigold: #F2B134;
+    --berry: #C8413A;
+    --leaf: #5E9E57;
+    --line: #C9CFE6;
+    --hand: "Gaegu", "Comic Sans MS", "Chalkboard SE", cursive;
+    --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cadcff; color: var(--ink); font-family: var(--body); }
+  canvas { position: fixed; inset: 0; display: block; width: 100%; height: 100%; }
+  .hud { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; justify-content: space-between; gap: 12px; pointer-events: none; }
+  .panel { flex: 0 1 340px; min-width: 0; background: var(--paper); border: 2px solid var(--ink); border-radius: 16px; padding: 8px 12px 10px; }
+  .panel.right { text-align: right; }
+  .player { font-size: .8rem; font-weight: 700; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cname { font-family: var(--hand); font-size: 1.7rem; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar { height: 14px; margin-top: 4px; background: var(--line); border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .right .bar { transform: scaleX(-1); }
+  .fill { height: 100%; width: 100%; background: var(--leaf); }
+  .fill.low { background: var(--berry); }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .right .row { flex-direction: row-reverse; }
+  .hp { font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .team { display: flex; gap: 6px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--marigold); border: 2px solid var(--ink); }
+  .dot.out { background: var(--line); border-color: var(--ink-soft); }
+  .dot.now { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
+  .controls { position: fixed; bottom: 12px; left: 0; right: 0; margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 6px; background: var(--paper); border: 2px solid var(--ink); border-radius: 16px; padding: 6px; max-width: calc(100vw - 24px); }
+  .btn { font: inherit; font-weight: 700; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 10px; padding: 5px 10px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .btn:hover { border-color: var(--ink); }
+  .btn.main { background: var(--marigold); border-color: var(--ink); }
+  .clock { font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 6px; white-space: nowrap; }
+  .notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+  .notice div { max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 22px 24px; text-align: center; }
+  .notice h1 { font-family: var(--hand); font-size: 2.2rem; line-height: 1; margin: 0 0 8px; }
+  .notice p { margin: 0 0 14px; }
+  :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
+  .pick { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
+  .pick-card { width: 100%; max-width: 640px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 20px 20px 16px; }
+  .pick-card h1 { font-family: var(--hand); font-size: 2.4rem; line-height: 1; margin: 0 0 4px; }
+  .pick-card .lede { margin: 0 0 12px; color: var(--ink-soft); }
+  .farm { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; overflow-y: auto; padding: 4px; margin: 0 -4px; }
+  .tile { position: relative; display: grid; justify-items: center; gap: 2px; font: inherit; color: var(--ink); background: var(--sky); border: 2px solid transparent; border-radius: 14px; padding: 8px 6px; cursor: pointer; }
+  .tile:hover { border-color: var(--line); }
+  .tile[aria-pressed="true"] { border-color: var(--ink); background: #FFF4D9; }
+  .tile canvas { position: static; width: 84px; height: 84px; }
+  .tile b { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tile small { color: var(--ink-soft); font-size: .78rem; }
+  .order { position: absolute; top: 6px; left: 6px; width: 24px; height: 24px; border-radius: 50%; background: var(--marigold); border: 2px solid var(--ink); font-weight: 700; font-size: .85rem; display: grid; place-items: center; }
+  .pick-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .pick-foot .status { flex: 1; min-width: 140px; color: var(--ink-soft); font-weight: 700; }
+  .fight { margin-left: auto; font-family: var(--hand); font-size: 1.6rem; line-height: 1; color: var(--ink); background: var(--marigold); border: 2px solid var(--ink); border-radius: 14px; padding: 9px 18px 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ink); }
+  .fight:disabled { opacity: .5; cursor: default; }
+  .fight:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  @media (max-width: 520px) { .cname { font-size: 1.3rem; } .panel { padding: 6px 8px 8px; } .controls .hide-small { display: none; } .btn { padding: 5px 8px; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud" id="hud" hidden>
+  <div class="panel" id="panelL"><div class="player"></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
+  <div class="panel right" id="panelR"><div class="player"></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
+</div>
+<div class="controls" id="controls" hidden>
+  <a class="btn hide-small" href="/world.html">Farm</a>
+  <button class="btn" type="button" id="play">Pause</button>
+  <button class="btn" type="button" id="restart">Restart</button>
+  <button class="btn" type="button" id="speed">1×</button>
+  <span class="clock" id="clock">0:00</span>
+  <button class="btn main" type="button" id="again" hidden>Pick again</button>
+</div>
+<div class="pick" id="pick" hidden>
+  <div class="pick-card">
+    <h1>Pick your 3</h1>
+    <p class="lede">They fight in the order you pick them. Big creatures crit more; small ones dodge more.</p>
+    <div class="farm" id="farm" role="group" aria-label="Your creatures"></div>
+    <div class="pick-foot">
+      <span class="status" id="pickStatus" role="status"></span>
+      <a class="btn" href="/world.html">Farm</a>
+      <button class="btn" type="button" id="randomTeam">Random</button>
+      <button class="fight" type="button" id="fight" disabled>Fight!</button>
+    </div>
+  </div>
+</div>
+<div class="notice" id="notice"><div><h1>Battle!</h1><p id="noticeText">Getting the fighters ready…</p><a class="btn" href="/world.html" id="noticeBack" hidden>Back to my farm</a></div></div>
+<script>
+// Plays a battle log (CREATURE_SPEC.md, "Battle log"). The replay never simulates: everything on screen is a
+// function of the playback time t and the log's events, so pause, restart and speed changes are free.
+const STAGE_W = 1600, STAGE_H = 900, GROUND = 660, VISIBLE_W = 1240;   // the fight happens in the middle 1240
+const HOME = { left: 480, right: 1120 }, EDGE = { left: -260, right: 1860 };
+const PX_BASE = 70, PX_PER_SIZE = 2;   // sqrt of a fighter's drawn area on stage: size 5 -> 80 px, 100 -> 270 px
+const WALK_IN = 0.8, DASH = 0.3, DASH_DIST = 230, SHAKE = 0.35, DODGE = 0.45, FLOAT = 0.9, FAINT = 0.9, HP_ANIM = 0.35;
+const TAU = Math.PI * 2;
+const clamp = (v, a, b, d) => typeof v === "number" && isFinite(v) ? Math.min(b, Math.max(a, v)) : d;
+const wave = (w, t) => w ? Math.sin(TAU * (clamp(w.freq, .2, 4, 1) * t + clamp(w.phase, 0, 1, 0))) : 0;
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+const lerp = (a, b, f) => a + (b - a) * f;
+const $ = id => document.getElementById(id);
+
+const cv = $("c"), ctx = cv.getContext("2d");
+let W, H, VIEW = new DOMMatrix();
+function resize() {
+  const dpr = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const k = Math.min(W / VISIBLE_W, H / STAGE_H);
+  VIEW = new DOMMatrix().scale(dpr, dpr).translate((W - STAGE_W * k) / 2, (H - STAGE_H * k) / 2).scale(k, k);
+}
+resize(); addEventListener("resize", resize);
+
+// ---------- the log, indexed per side ----------
+let LOG, SIDES, VIEWER, END, mode;
+let t = 0, playing = true, speed = 1, lastFrame = null;
+
+function lastAt(list, time) {           // last event in a time-sorted list with e.t <= time
+  let found = null;
+  for (const e of list || []) { if (e.t > time) break; found = e; }
+  return found;
+}
+
+function prepare(data, viewer) {
+  LOG = data.log;
+  const drawings = data.creatures || {};
+  VIEWER = viewer === "b" ? "b" : "a";
+  SIDES = {}; END = null;
+  for (const s of ["a", "b"]) {
+    const side = LOG.sides[s] || { team: [] };
+    SIDES[s] = {
+      key: s, name: side.name || (s === "a" ? "Player A" : "Player B"),
+      pos: s === VIEWER ? "left" : "right", dir: s === VIEWER ? 1 : -1,
+      team: side.team.map(m => ({ ...m, look: build(drawings[m.creature], m) })),
+      enters: [], attacks: {}, hits: {}, misses: {}, faints: {},
+    };
+  }
+  for (const e of LOG.events) {
+    const S = SIDES[e.side];
+    if (e.type === "enter") S.enters.push(e);
+    else if (e.type === "attack") (S.attacks[e.creature] ||= []).push(e);
+    else if (e.type === "hit") (S.hits[e.creature] ||= []).push(e);
+    else if (e.type === "miss") (S.misses[e.creature] ||= []).push(e);
+    else if (e.type === "faint") S.faints[e.creature] = e;
+    else if (e.type === "end") END = e;
+  }
+  t = 0; playing = true;
+  $("notice").hidden = true; $("hud").hidden = false; $("controls").hidden = false;
+  $("play").textContent = "Pause";
+  $("again").hidden = mode !== "practice";
+}
+
+// A creature's drawing, ready to animate. Missing drawings become a simple blob so the replay still plays.
+function build(d, member) {
+  if (!d || !Array.isArray(d.parts) || !d.parts.length) {
+    const pts = Array.from({ length: 17 }, (_, i) => [Math.round(60 * Math.cos(i / 16 * TAU)), Math.round(50 * Math.sin(i / 16 * TAU))]);
+    d = { parts: [{ id: "p0", points: pts, color: "#8a8fa8", width: 8, parent: null, role: "body" }], bounds: { minX: -60, minY: -50, maxX: 60, maxY: 50 } };
+  }
+  const plist = d.parts.slice(0, 8), parts = {};
+  plist.forEach(p => parts[p.id] = p);
+  const b = d.bounds || {}, box = { minX: b.minX ?? -60, minY: b.minY ?? -60, maxX: b.maxX ?? 60, maxY: b.maxY ?? 60 };
+  // Every drawing was stretched to the same box when saved, so scale it back: the drawn area grows with
+  // battle size, so a creature that looks bigger is bigger (crits more, dodges less). Very thin drawings are capped.
+  const area = Math.sqrt(Math.max(30, box.maxX - box.minX) * Math.max(30, box.maxY - box.minY));
+  return {
+    d, parts, order: [...plist].sort((x, y) => (x.z || 0) - (y.z || 0)), b: box,
+    k: clamp((PX_BASE + PX_PER_SIZE * clamp(member.size, 5, 100, 40)) / area, .35, 1.8, 1),
+  };
+}
+
+// ---------- animation (same rules as the world page) ----------
+function partMotion(look, mode, time) {
+  const out = {};
+  const add = (id, tr, tt) => {
+    const p = look.parts[id]; if (!p || !p.parent || p.moves === false) return;
+    const o = out[id] || (out[id] = { r: 0, s: 1, ox: 0, oy: 0 });
+    if (tr.rotate) o.r += clamp(tr.rotate.amp, 0, 60, 15) * wave(tr.rotate, tt);
+    if (tr.scale) o.s += clamp(tr.scale.amp, 0, .4, .1) * wave(tr.scale, tt);
+    if (tr.offset) { o.ox += clamp(tr.offset.ax, -30, 30, 0) * wave(tr.offset, tt); o.oy += clamp(tr.offset.ay, -30, 30, 0) * wave(tr.offset, tt); }
+  };
+  if (mode === "walk") {
+    const gait = (look.d.locomotion && look.d.locomotion.gait) || [], listed = new Set(gait.map(g => g.part)), n = {};
+    gait.forEach(g => add(g.part, g, time));
+    look.order.forEach(p => {
+      if (listed.has(p.id) || p.moves === false || !p.parent) return;
+      const role = p.role || "unknown", i = n[role] = (n[role] || 0); n[role]++;
+      const def = { leg: [20, 2, (i % 2) * .5], arm: [20, 2, (i % 2) * .5 + .25], wing: [35, 4, 0], tail: [15, 3, 0], unknown: [9, 1.2, (i % 2) * .5] }[role];
+      if (def) add(p.id, { rotate: { amp: def[0], freq: def[1], phase: def[2] } }, time);
+    });
+  } else if (mode === "idle") {
+    const idles = (look.d.idles || []).filter(Boolean);
+    if (idles.length) {
+      const idle = idles[Math.floor(time / 3) % idles.length], tt = time % 3;
+      if (tt < clamp(idle.duration, 1, 5, 2)) (idle.tracks || []).forEach(tr => add(tr.part, tr, tt));
+    }
+  }
+  return out;
+}
+
+function partMatrix(look, p, base, an, memo, guard = 0) {
+  if (memo[p.id]) return memo[p.id];
+  const par = p.parent && look.parts[p.parent]; let m;
+  if (!par || guard > 10) m = base;
+  else {
+    const pm = partMatrix(look, par, base, an, memo, guard + 1), a = an[p.id] || { r: 0, s: 1, ox: 0, oy: 0 }, v = p.pivot || [0, 0];
+    m = pm.translate(a.ox, a.oy).translate(v[0], v[1]).rotate(a.r).scale(a.s, a.s).translate(-v[0], -v[1]);
+  }
+  return memo[p.id] = m;
+}
+
+// ---------- where everything is at time t ----------
+function fighterAt(S, time) {
+  const enter = lastAt(S.enters, time);
+  if (!enter) return null;
+  const m = S.team[enter.slot], id = enter.creature, look = m.look, dir = S.dir;
+  const home = HOME[S.pos], since = time - enter.t;
+  let x = home, lift = 0, tilt = 0, anim = "idle", shake = 0, dashing = false;
+
+  if (since < WALK_IN) { x = lerp(EDGE[S.pos], home, ease(since / WALK_IN)); anim = "walk"; }
+
+  const atk = lastAt(S.attacks[id], time);
+  if (atk && time - atk.t < 2 * DASH) {
+    const d = time - atk.t, f = d < DASH ? ease(d / DASH) : 1 - ease((d - DASH) / DASH);
+    x += dir * DASH_DIST * f; tilt = dir * 8 * f; anim = "walk"; dashing = true;
+  }
+  const hit = lastAt(S.hits[id], time);
+  if (hit && time - hit.t < SHAKE) {
+    const d = time - hit.t;
+    shake = Math.sin(d * 70) * 9 * (1 - d / SHAKE) * (hit.crit ? 2 : 1);
+    x += shake; tilt -= dir * 6 * (1 - d / SHAKE);
+  }
+  const miss = lastAt(S.misses[id], time);
+  if (miss && time - miss.t < DODGE) {
+    const f = Math.sin(Math.PI * (time - miss.t) / DODGE);
+    x -= dir * 50 * f; lift += 24 * f;
+  }
+
+  // hp: animate from the previous value toward the latest hit's value
+  const hits = S.hits[id] || [];
+  let hp = enter.hp;
+  if (hit) {
+    const i = hits.indexOf(hit), before = i > 0 ? hits[i - 1].hp : enter.hp;
+    hp = lerp(before, hit.hp, ease((time - hit.t) / HP_ANIM));
+  }
+
+  const faint = S.faints[id] && S.faints[id].t <= time ? S.faints[id] : null;
+  let fall = 0, alpha = 1;
+  if (faint) {
+    const p = (time - faint.t) / FAINT;
+    fall = ease(p); alpha = 1 - ease((p - .35) / .65); anim = "still"; hp = hit ? hit.hp : 0;
+  }
+
+  // the winner's creature does a little victory hop
+  if (END && time >= END.t && END.winner === S.key && !faint) lift += Math.abs(Math.sin((time - END.t) * 7)) * 26;
+
+  const type = (look.d.locomotion && look.d.locomotion.type) || "walk";
+  if (type === "fly") lift += 35 + Math.sin(time * 3) * 5;
+  else if (anim === "walk" && type === "hop") lift += Math.abs(Math.sin(time * 9)) * 18;
+  else if (anim === "walk") lift += Math.abs(Math.sin(time * 12)) * 3;
+
+  return { S, m, id, look, dir, x, lift, tilt, fall, alpha, anim, hp, enter, hit, miss, faint, dashing };
+}
+
+// ---------- drawing ----------
+function drawBackground() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const groundY = VIEW.f + GROUND * VIEW.d;
+  const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+  sky.addColorStop(0, "#8ab3ff"); sky.addColorStop(1, "#d7e4ff");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, cv.width, groundY);
+  ctx.fillStyle = "#92b46e"; ctx.fillRect(0, groundY, cv.width, cv.height - groundY);
+  ctx.setTransform(VIEW);
+  // far hills, then the ground line
+  ctx.fillStyle = "#b5cf98";
+  ctx.beginPath(); ctx.moveTo(-2000, GROUND);
+  for (let x = -2000; x <= 3600; x += 40) ctx.lineTo(x, GROUND - 70 - Math.sin(x / 260) * 40 - Math.sin(x / 97) * 12);
+  ctx.lineTo(3600, GROUND); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#92b46e"; ctx.fillRect(-2000, GROUND, 5600, STAGE_H);
+  ctx.strokeStyle = "#6f9457"; ctx.lineWidth = 5; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.moveTo(-2000, GROUND); ctx.lineTo(3600, GROUND); ctx.stroke();
+  ctx.lineWidth = 4;
+  for (const x of [120, 300, 690, 800, 960, 1340, 1500]) {
+    const y = GROUND + 40 + (x % 7) * 9;
+    ctx.beginPath(); ctx.moveTo(x - 8, y - 6); ctx.lineTo(x - 4, y); ctx.moveTo(x, y - 9); ctx.lineTo(x + 1, y); ctx.moveTo(x + 9, y - 6); ctx.lineTo(x + 5, y); ctx.stroke();
+  }
+}
+
+function drawFighter(f, time) {
+  const { look, dir } = f, k = look.k;
+  const feet = look.b.maxY * k;
+  ctx.setTransform(VIEW);
+  ctx.globalAlpha = f.alpha * .25 * (1 - Math.min(.6, f.lift / 120));
+  ctx.fillStyle = "#000";
+  ctx.beginPath(); ctx.ellipse(f.x, GROUND + 4, (look.b.maxX - look.b.minX) * .35 * k * (1 - Math.min(.4, f.lift / 150)), 10, 0, 0, TAU); ctx.fill();
+  ctx.globalAlpha = f.alpha;
+  // faint: tip over backwards around the feet
+  const base = VIEW.translate(f.x, GROUND).rotate(-dir * 90 * f.fall + f.tilt).translate(0, -feet - f.lift).scale(k * dir, k);
+  const an = f.anim === "still" ? {} : partMotion(look, f.anim, time), memo = {};
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const p of look.order) {
+    ctx.setTransform(partMatrix(look, p, base, an, memo));
+    ctx.strokeStyle = p.color || "#000"; ctx.lineWidth = p.width || 6;
+    ctx.beginPath();
+    (p.points || []).forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]));
+    if ((p.points || []).length === 1) ctx.lineTo(p.points[0][0] + .1, p.points[0][1]);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawText(text, x, y, size, fill, alpha) {
+  ctx.setTransform(VIEW);
+  ctx.globalAlpha = alpha;
+  ctx.font = `700 ${size}px Gaegu, "Comic Sans MS", cursive`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineJoin = "round"; ctx.lineWidth = size / 5; ctx.strokeStyle = "#26314F";
+  ctx.strokeText(text, x, y); ctx.fillStyle = fill; ctx.fillText(text, x, y);
+  ctx.globalAlpha = 1;
+}
+
+function drawEffects(f, time) {
+  const top = GROUND - (f.look.b.maxY - f.look.b.minY) * f.look.k - f.lift;
+  if (f.hit && time - f.hit.t < FLOAT) {
+    const d = time - f.hit.t, a = 1 - ease((d - .5) / .4);
+    if (d < .18) {                                   // impact burst on the side facing the attacker
+      const cx = f.x - f.dir * 40 * f.look.k, cy = GROUND - (f.look.b.maxY - f.look.b.minY) * f.look.k / 2;
+      ctx.setTransform(VIEW); ctx.strokeStyle = f.hit.crit ? "#C8413A" : "#F2B134"; ctx.lineWidth = f.hit.crit ? 9 : 6;
+      const r = (f.hit.crit ? 70 : 45) * (0.6 + d * 3);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) { const ang = i / 8 * TAU; ctx.moveTo(cx + Math.cos(ang) * r * .45, cy + Math.sin(ang) * r * .45); ctx.lineTo(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r); }
+      ctx.stroke();
+    }
+    if (f.hit.crit) drawText(`CRIT −${f.hit.damage}`, f.x, top - 30 - d * 70, 64, "#F2B134", a);
+    else drawText(`−${f.hit.damage}`, f.x, top - 30 - d * 70, 50, "#ffffff", a);
+  }
+  if (f.miss && time - f.miss.t < FLOAT) {
+    const d = time - f.miss.t;
+    drawText("dodge!", f.x, top - 30 - d * 50, 44, "#C9CFE6", 1 - ease((d - .5) / .4));
+  }
+}
+
+function drawBanner(time) {
+  if (!END || time < END.t) return;
+  const d = time - END.t, a = ease(d / .4);
+  const title = END.winner === "draw" ? "Draw!" : END.winner === VIEWER ? "You win!" : "You lose";
+  const why = { knockout: "Knockout", timeout: "Time's up", forfeit: "Opponent left" }[END.reason] || "";
+  ctx.setTransform(VIEW);
+  ctx.globalAlpha = a * .9; ctx.fillStyle = "#ffffff";
+  ctx.beginPath(); ctx.roundRect(STAGE_W / 2 - 300, 165 - 20 * (1 - a), 600, 175, 30); ctx.fill();
+  ctx.globalAlpha = a; ctx.strokeStyle = "#26314F"; ctx.lineWidth = 4; ctx.stroke();
+  const pop = 1 + .15 * Math.max(0, 1 - d / .3);
+  drawText(title, STAGE_W / 2, 230, 110 * pop, END.winner === VIEWER ? "#F2B134" : "#ffffff", a);
+  drawText(why, STAGE_W / 2, 305, 40, "#C9CFE6", a);
+}
+
+// ---------- HUD ----------
+function updatePanel(panel, S, f, time) {
+  const q = sel => panel.querySelector(sel);
+  q(".player").textContent = S.key === VIEWER ? `${S.name} (you)` : S.name;
+  const m = f ? f.m : S.team[0];
+  q(".cname").textContent = m ? m.name : "";
+  const hp = f ? Math.max(0, Math.round(f.hp)) : m ? m.maxHp : 0, max = m ? m.maxHp : 1;
+  q(".fill").style.width = `${100 * hp / max}%`;
+  q(".fill").classList.toggle("low", hp / max < .3);
+  q(".hp").textContent = `${hp} / ${max}`;
+  const team = q(".team");
+  if (team.children.length !== S.team.length) team.replaceChildren(...S.team.map(() => document.createElement("span")));
+  S.team.forEach((member, i) => {
+    const out = S.faints[member.creature] && S.faints[member.creature].t <= time;
+    team.children[i].className = "dot" + (out ? " out" : "") + (f && f.enter.slot === i && !out ? " now" : "");
+    team.children[i].title = member.name;
+  });
+}
+
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function frame(now) {
+  if (lastFrame !== null && playing && LOG) t = Math.min(LOG.duration + 3, t + (now - lastFrame) / 1000 * speed);
+  lastFrame = now;
+  drawBackground();
+  if (LOG) {
+    const fighters = ["a", "b"].map(s => fighterAt(SIDES[s], t)).filter(Boolean);
+    fighters.sort((x, y) => x.dashing - y.dashing);   // the dashing attacker draws in front
+    fighters.forEach(f => drawFighter(f, t));
+    fighters.forEach(f => drawEffects(f, t));
+    drawBanner(t);
+    const byKey = Object.fromEntries(fighters.map(f => [f.S.key, f]));
+    updatePanel($("panelL"), SIDES[VIEWER], byKey[VIEWER], t);
+    const other = VIEWER === "a" ? "b" : "a";
+    updatePanel($("panelR"), SIDES[other], byKey[other], t);
+    $("clock").textContent = `${fmt(Math.min(t, LOG.duration))} / ${fmt(LOG.duration)}`;
+    if (t >= LOG.duration + 3 && playing) { playing = false; $("play").textContent = "Play"; }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---------- controls ----------
+$("play").onclick = () => {
+  if (!LOG) return;
+  if (!playing && t >= LOG.duration + 3) t = 0;
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+};
+$("restart").onclick = () => { t = 0; playing = true; $("play").textContent = "Pause"; };
+$("speed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("speed").textContent = `${speed}×`; };
+$("again").onclick = () => showPicker();
+
+// ---------- loading ----------
+// /battle.html         practice: pick 3 from your farm (or Random) against 3 random ones, run by the real engine
+// /battle.html?sample  plays frontend/sample-battle.json (a hand-written log)
+// Add &side=b to watch from side b, &at=12.5 to open paused at that second. Phase 6 will hand a live battle's log to window.playBattle(data, side).
+function showNotice(text) {
+  $("pick").hidden = true;
+  $("noticeText").textContent = text; $("noticeBack").hidden = false; $("notice").hidden = false;
+}
+const friendly = err => err.message === "Failed to fetch" ? "Can't reach the server. Make sure it is running." : err.message;
+
+window.playBattle = (data, side) => prepare(data, side);
+
+// ---------- pick your 3 ----------
+const PICK_KEY = "battle.lastTeam";
+let farm = [], picks = [];
+
+function thumbnail(creature) {
+  const size = 84, dpr = devicePixelRatio || 1, c = document.createElement("canvas");
+  c.width = c.height = size * dpr;
+  const g = c.getContext("2d"), parts = [...(creature.parts || [])].sort((x, y) => (x.z || 0) - (y.z || 0));
+  const b = creature.bounds || { minX: -100, minY: -100, maxX: 100, maxY: 100 }, pad = 10;
+  const k = (size - 2 * pad) / Math.max(1, b.maxX - b.minX, b.maxY - b.minY);
+  g.setTransform(dpr * k, 0, 0, dpr * k, dpr * (size / 2 - k * (b.minX + b.maxX) / 2), dpr * (size / 2 - k * (b.minY + b.maxY) / 2));
+  g.lineCap = g.lineJoin = "round";
+  for (const p of parts) {
+    g.strokeStyle = p.color || "#000"; g.lineWidth = p.width || 6;
+    g.beginPath(); (p.points || []).forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]));
+    if ((p.points || []).length === 1) g.lineTo(p.points[0][0] + .1, p.points[0][1]);
+    g.stroke();
+  }
+  return c;
+}
+
+function renderPicks() {
+  for (const tile of $("farm").children) {
+    const i = picks.indexOf(tile.dataset.id);
+    tile.setAttribute("aria-pressed", String(i >= 0));
+    tile.querySelector(".order").hidden = i < 0;
+    tile.querySelector(".order").textContent = i + 1;
+  }
+  $("fight").disabled = picks.length !== 3;
+  $("pickStatus").textContent = picks.length === 3 ? "Ready!" : `Pick ${3 - picks.length} more`;
+}
+
+function buildFarm() {
+  $("farm").replaceChildren(...farm.map(c => {
+    const tile = document.createElement("button");
+    tile.type = "button"; tile.className = "tile"; tile.dataset.id = c.id;
+    const name = document.createElement("b"), stats = document.createElement("small"), order = document.createElement("span");
+    name.textContent = (c.settings && c.settings.name) || "?";
+    stats.textContent = `size ${c.battle.size} · attack ${c.battle.baseAttack}`;
+    order.className = "order"; order.hidden = true;
+    tile.append(order, thumbnail(c), name, stats);
+    tile.onclick = () => {
+      const i = picks.indexOf(c.id);
+      if (i >= 0) picks.splice(i, 1);
+      else if (picks.length < 3) picks.push(c.id);
+      renderPicks();
+    };
+    return tile;
+  }));
+  renderPicks();
+}
+
+function showPicker() {
+  LOG = null;
+  $("hud").hidden = $("controls").hidden = $("notice").hidden = true;
+  $("pick").hidden = false;
+}
+
+async function startPractice(team) {
+  $("fight").disabled = $("randomTeam").disabled = true;
+  $("pickStatus").textContent = "Getting the fighters ready…";
+  try {
+    const res = await fetch("/api/practice-battle", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(team ? { team } : {})
+    });
+    if (res.status === 401) { location.assign("/login.html"); return; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "Couldn't start a battle. Try again.");
+    if (team) try { localStorage.setItem(PICK_KEY, JSON.stringify(team)); } catch {}
+    $("pick").hidden = true;
+    prepare(data, "a");
+  } catch (err) {
+    $("pickStatus").textContent = friendly(err);
+  } finally {
+    $("randomTeam").disabled = false; $("fight").disabled = picks.length !== 3;
+  }
+}
+$("fight").onclick = () => startPractice(picks.slice());
+$("randomTeam").onclick = () => startPractice(null);
+
+(async () => {
+  const params = new URLSearchParams(location.search);
+  mode = params.has("sample") ? "sample" : "practice";
+  try {
+    if (mode === "practice") {
+      const res = await fetch("/api/creatures");
+      if (res.status === 401) { location.assign("/login.html"); return; }
+      if (!res.ok) throw new Error("Couldn't load your farm. Try again.");
+      farm = await res.json();
+      if (farm.length < 3) throw new Error(`You need at least 3 creatures to battle (you have ${farm.length}). Draw a few more!`);
+      try {
+        const last = JSON.parse(localStorage.getItem(PICK_KEY) || "[]");
+        if (Array.isArray(last)) picks = last.filter(id => farm.some(c => c.id === id)).slice(0, 3);
+      } catch {}
+      buildFarm(); showPicker();
+      return;
+    }
+    const me = await fetch("/api/me").then(r => r.ok ? r.json() : null).catch(() => null);
+    const data = await fetch("/sample-battle.json").then(r => r.json());
+    const side = params.get("side") || (me && data.log.sides.b && data.log.sides.b.userId === me.id ? "b" : "a");
+    prepare(data, side);
+    if (params.has("at")) { t = clamp(Number(params.get("at")), 0, LOG.duration + 3, 0); playing = false; $("play").textContent = "Play"; }
+  } catch (err) {
+    showNotice(friendly(err));
+  }
+})();
+</script>
+</body>
+</html>
