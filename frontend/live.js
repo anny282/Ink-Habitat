@@ -1,10 +1,12 @@
-// Live battle pop-ups for any page that includes this after the Socket.IO client (farm, friends):
+// Live presence and battle pop-ups for any page that includes this after the Socket.IO client:
 // "<friend> wants to battle!" with Accept / No thanks, and "You're in a battle" with a way back to it.
 // The battle itself runs on /battle.html?room=<id> (server side: rooms.py).
 (() => {
   if (!window.io) return;
   const socket = io({ transports: ["websocket", "polling"] });
   window.liveSocket = socket;   // the friends page sends invites through this
+  const activity = location.pathname.endsWith("/draw-creature.html") ? "drawing" : "online";
+  socket.on("connect", () => socket.emit("activity", { state: activity }));
 
   const box = document.createElement("div");
   box.setAttribute("role", "status");
@@ -34,6 +36,11 @@
 
   socket.on("battle", v => {
     clearInterval(timer);
+    const room = new URLSearchParams(location.search).get("room");
+    if (room && room === v.battleId && ["invited", "picking", "playing", "prize"].includes(v.stage)) {
+      box.hidden = true;
+      return;
+    }
     if (v.stage === "invited" && !v.inviter) {
       const shownAt = Date.now();
       const left = () => Math.max(0, Math.ceil((v.deadline - v.serverNow - (Date.now() - shownAt)) / 1000));

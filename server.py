@@ -269,7 +269,7 @@ def delete_creature(creature_id: str, user=Depends(current_user)):
 
 @app.get("/api/friends")
 def list_friends(user=Depends(current_user)):
-    return [{**f, "online": rooms.is_online(f["id"]), "busy": rooms.is_busy(f["id"])} for f in db.friends_of(user["id"])]
+    return [{**f, "state": rooms.presence_state(f["id"]), "busy": rooms.is_busy(f["id"])} for f in db.friends_of(user["id"])]
 
 
 @app.post("/api/friends")

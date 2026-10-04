@@ -14,6 +14,8 @@ python -m pip install -r requirements.txt
 
 On Windows, activate the environment with `venv\Scripts\activate` instead.
 
+If you already made the virtual environment and then pulled a project update, activate it and run `python -m pip install -r requirements.txt` again. This installs any dependencies added by the update; you do not need to recreate the environment.
+
 Then set up the local settings file below, and start the server.
 
 ## Set up local settings
@@ -145,4 +147,5 @@ The server serves only files inside `frontend/`; `.env` and saved data are not e
 - If you change a page and do not see the update, hard refresh (`Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Windows/Linux).
 - If startup says "TiDB is not configured", check that `TIDB_HOST`, `TIDB_USER`, and `TIDB_PASSWORD` in `.env` are filled in correctly.
 - If the server cannot connect to TiDB, confirm the password and cluster details with the person who provided them, and check your internet connection.
+- If Python reports `ModuleNotFoundError` for a package such as `socketio`, activate `venv` and run `python -m pip install -r requirements.txt` from the project folder, then restart the server.
 - To move creatures from the old JSON files into your account: sign up first, then run `python migrate_json.py <your username>`.
