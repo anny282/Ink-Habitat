@@ -18,14 +18,14 @@ On Windows, activate the environment with `venv\Scripts\activate` instead. Then 
 python server.py
 ```
 
-Open [http://localhost:8000](http://localhost:8000). The world page links to the drawing page, and a submitted creature is saved to the local server and appears in the world. Stop the server with `Ctrl+C`.
+Open [http://localhost:8000](http://localhost:8000). The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move each creature to one scene or take it out of the world. These scene assignments are saved locally and do not delete the creature. Stop the server with `Ctrl+C`.
 
 Run `source venv/bin/activate` again in a new terminal before starting the server. If port 8000 is already in use, change the port in `server.py`.
 
 ## Pages and files
 
 - `frontend/draw-creature.html` — draw a creature and submit it to the server.
-- `frontend/world.html` — view, animate, and manage saved creatures.
+- `frontend/world.html` — view, animate, and manage saved creatures across Grasslands, Desert, and Ocean.
 - `server.py` — local web server and creature storage API.
 - `rig.py` — connects strokes with parent links and swing pivots when a creature is saved.
 - `data/creatures/` — created automatically; stores saved creature JSON files.

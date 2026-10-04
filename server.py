@@ -23,6 +23,7 @@ AUDIO = BASE / "data" / "audio"
 DATA.mkdir(parents=True, exist_ok=True)
 AUDIO.mkdir(parents=True, exist_ok=True)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SCENES = {"grasslands", "desert", "ocean"}
 app = FastAPI(title="StromHacks Creature World")
 
 
@@ -137,11 +138,26 @@ def list_creatures():
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...)):
     creature = validate(creature)
+    creature["scene"] = "grasslands"
     rig_parts(creature["parts"])           # parent, pivot, z (Gemini's part summary uses the rig)
     gemini.enrich(creature)                # role, moves, locomotion, idles
     rig_parts(creature["parts"])           # redo z now that roles are known
     creature = assign_id(fill_random(creature))
     return write(elevenlabs.generate(creature, AUDIO, VOICE_IDS))
+
+
+@app.patch("/api/creatures/{creature_id}/scene")
+def move_creature(creature_id: str, payload: dict = Body(...)):
+    """Place a creature in one scene, or remove it from the world with null."""
+    path = path_for(creature_id)
+    if not path.exists():
+        raise HTTPException(404, "Creature not found")
+    scene = payload.get("scene")
+    if scene is not None and (not isinstance(scene, str) or scene not in SCENES):
+        raise HTTPException(400, "scene must be grasslands, desert, ocean, or null")
+    creature = json.loads(path.read_text(encoding="utf-8"))
+    creature["scene"] = scene
+    return write(creature)
 
 
 @app.delete("/api/creatures/{creature_id}")
