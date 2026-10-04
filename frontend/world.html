@@ -86,7 +86,7 @@ function say(c){
 // ---- animation: collect per-part rotate/scale/offset ----
 function animate(c){
   const out={},t=c.clock;
-  const add=(id,tr,tt)=>{const p=c.parts[id];if(!p||!p.parent||!p.moves)return; // body (no parent) never animates
+  const add=(id,tr,tt)=>{const p=c.parts[id];if(!p||!p.parent||p.moves===false)return; // null moves means animate until AI classifies it
     const o=out[id]||(out[id]={r:0,s:1,ox:0,oy:0});
     if(tr.rotate)o.r+=clamp(tr.rotate.amp,0,60,15)*wave(tr.rotate,tt);
     if(tr.scale)o.s+=clamp(tr.scale.amp,0,.4,.1)*wave(tr.scale,tt);
@@ -94,8 +94,8 @@ function animate(c){
   if(c.state==='walk'){
     const gait=(c.d.locomotion&&c.d.locomotion.gait)||[],listed=new Set(gait.map(g=>g.part));
     gait.forEach(g=>add(g.part,g,t));
-    const n={};c.order.forEach(p=>{if(listed.has(p.id)||!p.moves||!p.parent)return;const i=n[p.role]=(n[p.role]||0);n[p.role]++;
-      const def={leg:[20,2,(i%2)*.5],arm:[20,2,(i%2)*.5+.25],wing:[35,4,0],tail:[15,3,0]}[p.role];
+    const n={};c.order.forEach(p=>{if(listed.has(p.id)||p.moves===false||!p.parent)return;const role=p.role||'unknown',i=n[role]=(n[role]||0);n[role]++;
+      const def={leg:[20,2,(i%2)*.5],arm:[20,2,(i%2)*.5+.25],wing:[35,4,0],tail:[15,3,0],unknown:[9,1.2,(i%2)*.5]}[role];
       if(def)add(p.id,{rotate:{amp:def[0],freq:def[1],phase:def[2]}},t)});
   }else if(c.idle&&c.idleT<clamp(c.idle.duration,1,5,2)){
     (c.idle.tracks||[]).forEach(tr=>add(tr.part,tr,c.idleT));

@@ -9,6 +9,8 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from rig import rig_parts
+
 BASE = Path(__file__).resolve().parent
 FRONTEND = BASE / "frontend"
 DATA = BASE / "data" / "creatures"
@@ -61,7 +63,9 @@ def list_creatures():
 
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...)):
-    return save(validate(creature))
+    creature = validate(creature)
+    rig_parts(creature["parts"])
+    return save(creature)
 
 
 @app.delete("/api/creatures/{creature_id}")

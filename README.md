@@ -27,11 +27,12 @@ Run `source venv/bin/activate` again in a new terminal before starting the serve
 - `frontend/draw-creature.html` — draw a creature and submit it to the server.
 - `frontend/world.html` — view, animate, and manage saved creatures.
 - `server.py` — local web server and creature storage API.
+- `rig.py` — connects strokes with parent links and swing pivots when a creature is saved.
 - `data/creatures/` — created automatically; stores saved creature JSON files.
 - `CREATURE_SPEC.md` — creature JSON format (v2).
 - `example_creature.json` — example creature loaded on a fresh run.
 
-The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. The current local backend stores drawing submissions as-is. Gemini rigging and ElevenLabs audio generation are not configured yet.
+The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. The server rigs each creature as it is saved. Until Gemini role labels are available, attached unlabeled strokes get a gentle default swing. Gemini animation details and ElevenLabs audio generation are not configured yet.
 
 ## Troubleshooting
 
