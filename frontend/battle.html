@@ -574,7 +574,7 @@ function makeButton(label, action, main) {
   if (typeof action === "string") b.href = action; else { b.type = "button"; b.onclick = action; }
   return b;
 }
-const homeButtons = () => [makeButton("Farm", "/world.html"), makeButton("Friends", "/friends.html", true)];
+const homeButtons = () => [makeButton("Back to my farm", "/world.html"), makeButton("Back to Battle", "/battle.html", true)];
 
 function showMessage(title, text, buttons) {
   LOG = null;
