@@ -1,4 +1,4 @@
-# StromHacks2026
+# Ink Habitat
 
 A creature farm: draw a creature, give it a name and personality, then watch it wander around the island. Add friends, visit their farms, and battle them with teams of 3.
 
@@ -86,7 +86,6 @@ To switch to different keys later, replace these two lines and restart the serve
 ### 4. Start the server
 
 In the project folder, with the virtual environment activated, run:
-
 ```bash
 python server.py
 ```
