@@ -166,6 +166,37 @@ def test_forfeit_cuts_the_log():
     assert battle.forfeit(log, 999, "b")["duration"] == log["duration"]  # can't cut past the end
 
 
+def test_buff_cards():
+    import collections
+    rng = random.Random(5)
+    for _ in range(200):  # every hand: 3 different cards, 2 buffs and 1 debuff
+        hand = battle.deal(rng)
+        assert len(set(hand)) == 3 and sorted(battle.BUFFS[c]["good"] for c in hand) == [False, True, True]
+    assert all(battle.describe(c) for c in battle.BUFFS.values())
+
+    ta, tb = team("a", [(30, 6), (70, 4), (50, 5)]), team("b", [(90, 3), (10, 8), (40, 5)])
+    log = battle.run_battle(ta, tb, 3, {"a": "tough"})
+    check_log_rules(log)
+    assert log["sides"]["a"]["buff"]["name"] == "Tough Hide" and log["sides"]["b"]["buff"] is None
+    assert [m["maxHp"] for m in log["sides"]["a"]["team"]] == [battle.HP + battle.BUFFS["tough"]["hp"]] * 3
+    assert [m["maxHp"] for m in log["sides"]["b"]["team"]] == [battle.HP] * 3   # only your own team
+    assert battle.run_battle(ta, tb, 3)["sides"]["a"]["buff"] is None
+
+    def first_outcome(buff, seed):
+        log = battle.run_battle(ta, tb, seed, {"a": buff})
+        return next(e for e in log["events"] if e["type"] in ("hit", "miss") and e["by"] == "a0")
+    for seed in range(20):
+        assert first_outcome("ambush", seed)["type"] == "hit" and first_outcome("ambush", seed)["crit"]
+        assert first_outcome("fright", seed)["type"] == "miss"
+
+    try:
+        battle.run_battle(ta, tb, 3, {"a": "not-a-card"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted an unknown card")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

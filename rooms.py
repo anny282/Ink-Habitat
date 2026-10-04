@@ -3,8 +3,8 @@
 One room per battle and one active battle per account. Battle state lives in memory in this server
 process (run a single worker); finished battles are written to TiDB in one transaction.
 
-    invite -> accept -> both pick 3 in secret -> both lock in (or the pick timer picks for them)
-    -> the server runs the engine once -> both replay the same log from the same start time
+    invite -> accept -> both pick 3 in secret and lock in -> each flips 1 of 3 face-down buff cards dealt
+    by the server (the pick timer picks anything missing) -> the server runs the engine once -> both replay the same log from the same start time
     -> the winner picks a prize from the loser's team (30 s, then the server picks at random)
     -> one transaction moves the prize, adds a win to each winning creature, and saves the battle
 
@@ -27,6 +27,7 @@ import db
 
 INVITE_SECONDS = 60
 PICK_SECONDS = 60
+CARD_SECONDS = 15            # locking in late still leaves at least this long to pick a card
 COUNTDOWN_SECONDS = 4        # between both locking in and the replay starting
 PRIZE_SECONDS = 30
 GRACE_SECONDS = 10           # a player who drops (closed tab, reload) has this long to come back
@@ -80,9 +81,14 @@ def new_battle(inviter, friend):
     return {
         "id": secrets.token_hex(8), "stage": "invited", "deadline": now() + INVITE_SECONDS,
         "sides": {"a": inviter, "b": friend}, "picks": {"a": None, "b": None},
+        "hands": None, "cards": {"a": None, "b": None},   # each side's 3 buff ids, and the index they flipped
         "log": None, "start": None, "creatures": None, "reason": None, "error": None,
         "timer": None, "away": {},
     }
+
+
+def ready(b, side):
+    return b["picks"][side] is not None and b["cards"][side] is not None
 
 
 def side_of(b, user_id):
@@ -90,15 +96,19 @@ def side_of(b, user_id):
 
 
 def view(b, side):
-    """Everything one player may see. The opponent's picks stay hidden until the battle starts."""
+    """Everything one player may see. The opponent's picks and card, and your own cards until you flip one,
+    stay hidden until the battle starts."""
     them = other(side)
     v = {"battleId": b["id"], "stage": b["stage"], "you": side, "me": b["sides"][side],
          "opponent": b["sides"][them], "serverNow": ms(now()), "deadline": ms(b["deadline"])}
     if b["stage"] == "invited":
         v["inviter"] = side == "a"
     if b["stage"] == "picking":
-        v["locked"] = {"you": b["picks"][side] is not None, "opponent": b["picks"][them] is not None}
+        v["locked"] = {"you": b["picks"][side] is not None, "opponent": ready(b, them)}
         v["myTeam"] = [c["id"] for c in b["picks"][side]] if b["picks"][side] else None
+        flipped = b["cards"][side]
+        v["cards"] = {"picked": flipped,
+                      "hand": None if flipped is None else [battle.card_info(c) for c in b["hands"][side]]}
     if b["log"]:
         v.update(log=b["log"], creatures=b["creatures"], startAt=ms(b["start"]))
         if b["stage"] == "prize":
@@ -164,8 +174,10 @@ async def invite_expired(b):
 
 
 async def picks_due(b):
-    """Pick time is up: anyone who hasn't locked in gets 3 random creatures from their farm."""
+    """Pick time is up: anyone who hasn't locked in gets 3 random creatures from their farm and a random card."""
     for side in "ab":
+        if b["cards"][side] is None:
+            b["cards"][side] = random.randrange(len(b["hands"][side]))
         if b["picks"][side] is None:
             farm = await asyncio.to_thread(db.get_creatures, b["sides"][side]["id"])
             if len(farm) < battle.TEAM_SIZE:
@@ -175,7 +187,8 @@ async def picks_due(b):
 
 
 async def start_fight(b):
-    log = battle.run_battle(b["picks"]["a"], b["picks"]["b"], random.randrange(2 ** 31))
+    buffs = {s: b["hands"][s][b["cards"][s]] for s in "ab"}
+    log = battle.run_battle(b["picks"]["a"], b["picks"]["b"], random.randrange(2 ** 31), buffs)
     b["start"] = now() + COUNTDOWN_SECONDS
     log.update(battleId=b["id"], startAt=datetime.fromtimestamp(b["start"], timezone.utc).isoformat(), prize=None)
     for side in "ab":
@@ -347,7 +360,7 @@ async def answer(sid, data):
         if not (data or {}).get("accept"):
             await player_left(b, "b")
             return {"ok": True}
-        b.update(stage="picking", deadline=now() + PICK_SECONDS)
+        b.update(stage="picking", deadline=now() + PICK_SECONDS, hands={s: battle.deal(random) for s in "ab"})
         set_timer(b, PICK_SECONDS, picks_due)
         await push(b)
     return {"ok": True, "battleId": b["id"]}
@@ -371,11 +384,34 @@ async def lock(sid, data):
         if not all(isinstance(i, str) and i in farm for i in team):
             return {"error": "You can only pick creatures from your own farm."}
         b["picks"][side] = [farm[i] for i in team]
-        if b["picks"][other(side)] is None:
-            await push(b)
-        else:
-            await start_fight(b)
+        if b["deadline"] - now() < CARD_SECONDS:   # locked in at the last second: still time to pick a card
+            b["deadline"] = now() + CARD_SECONDS
+            set_timer(b, CARD_SECONDS, picks_due)
+        await push(b)
     return {"ok": True}
+
+
+@sio.event
+async def card(sid, data):
+    """Flip one of your 3 face-down buff cards (after locking in your team)."""
+    async with state_lock():
+        user, b, side = mine(sid, data)
+        if not b or b["stage"] != "picking":
+            return {"error": "Picking is over."}
+        if b["picks"][side] is None:
+            return {"error": "Lock in your team first."}
+        if b["cards"][side] is not None:
+            return {"error": "You already picked a card."}
+        index = (data or {}).get("index")
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(b["hands"][side]):
+            return {"error": "Pick one of the 3 cards."}
+        b["cards"][side] = index
+        hand = [battle.card_info(c) for c in b["hands"][side]]   # the page flips all 3 over
+        if ready(b, other(side)):
+            await start_fight(b)
+        else:
+            await push(b)
+    return {"ok": True, "hand": hand}
 
 
 @sio.event

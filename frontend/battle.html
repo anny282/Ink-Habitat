@@ -74,14 +74,38 @@
   .tile:disabled { cursor: default; opacity: .75; }
   .tile:disabled[aria-pressed="true"] { opacity: 1; }
   .notice .buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .buff { display: inline-block; max-width: 100%; margin-top: 3px; font-size: .75rem; font-weight: 700; border: 2px solid; border-radius: 999px; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
+  .buff.good { background: #E4F2E1; border-color: var(--leaf); }
+  .buff.bad { background: #F8E1DF; border-color: var(--berry); }
+  .hand { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 6px 0 2px; }
+  .card { font: inherit; color: var(--ink); background: none; border: 0; padding: 0; aspect-ratio: 3 / 4; perspective: 900px; cursor: pointer; }
+  .card:disabled { cursor: default; }
+  .card .inner { position: relative; display: block; width: 100%; height: 100%; transition: transform .6s cubic-bezier(.3, 1.4, .5, 1); transform-style: preserve-3d; }
+  .card.flipped .inner { transform: rotateY(180deg); }
+  .card:not(:disabled):hover .inner { transform: translateY(-6px) rotate(-2deg); }
+  .card .face { position: absolute; inset: 0; display: grid; place-content: center; gap: 6px; padding: 10px; border: 2px solid var(--ink); border-radius: 16px; backface-visibility: hidden; text-align: center; }
+  .card .back { background: var(--marigold) repeating-linear-gradient(45deg, transparent 0 10px, #ffffff40 10px 20px); box-shadow: 0 4px 0 var(--ink); }
+  .card .back span { font-family: var(--hand); font-size: 4rem; line-height: 1; }
+  .card .front { transform: rotateY(180deg); background: var(--paper); }
+  .card .front b { font-family: var(--hand); font-size: 1.6rem; line-height: 1; }
+  .card .front small { font-size: .85rem; line-height: 1.3; }
+  .card .front .tag { justify-self: center; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-radius: 999px; padding: 1px 8px; }
+  .card.good .front { border-color: var(--leaf); box-shadow: 0 4px 0 var(--leaf); }
+  .card.good .tag { background: #E4F2E1; }
+  .card.bad .front { border-color: var(--berry); box-shadow: 0 4px 0 var(--berry); }
+  .card.bad .tag { background: #F8E1DF; }
+  .card.mine .front { outline: 4px solid var(--marigold); outline-offset: 3px; }
+  .card.other { opacity: .55; }
+  @media (prefers-reduced-motion: reduce) { .card .inner { transition: none; } }
+  @media (max-width: 520px) { .hand { gap: 8px; } .card .front b { font-size: 1.2rem; } .card .front small { font-size: .75rem; } }
   @media (max-width: 520px) { .cname { font-size: 1.3rem; } .panel { padding: 6px 8px 8px; } .controls .hide-small { display: none; } .btn { padding: 5px 8px; } }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div class="hud" id="hud" hidden>
-  <div class="panel" id="panelL"><div class="player"></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
-  <div class="panel right" id="panelR"><div class="player"></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
+  <div class="panel" id="panelL"><div class="player"></div><div class="buff" hidden></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
+  <div class="panel right" id="panelR"><div class="player"></div><div class="buff" hidden></div><div class="cname"></div><div class="bar"><div class="fill"></div></div><div class="row"><div class="team"></div><span class="hp"></span></div></div>
 </div>
 <div class="controls" id="controls" hidden>
   <a class="btn hide-small" href="/world.html">Farm</a>
@@ -103,6 +127,14 @@
       <button class="btn" type="button" id="randomTeam">Random</button>
       <button class="fight" type="button" id="fight" disabled>Fight!</button>
     </div>
+  </div>
+</div>
+<div class="pick" id="cards" hidden>
+  <div class="pick-card">
+    <h1>Pick a card</h1>
+    <p class="lede">Two of these help your team and one hurts it. Which is which? Flip one to find out.</p>
+    <div class="hand" id="hand" role="group" aria-label="Buff cards"></div>
+    <div class="pick-foot"><span class="status" id="cardsStatus" role="status"></span></div>
   </div>
 </div>
 <div class="notice" id="notice"><div><h1 id="noticeTitle">Battle!</h1><p id="noticeText">Getting the fighters ready…</p><div class="buttons" id="noticeButtons"><a class="btn" href="/world.html" id="noticeBack" hidden>Back to my farm</a></div></div></div>
@@ -151,7 +183,7 @@ function prepare(data, viewer) {
   for (const s of ["a", "b"]) {
     const side = LOG.sides[s] || { team: [] };
     SIDES[s] = {
-      key: s, name: side.name || (s === "a" ? "Player A" : "Player B"),
+      key: s, name: side.name || (s === "a" ? "Player A" : "Player B"), buff: side.buff || null,
       pos: s === VIEWER ? "left" : "right", dir: s === VIEWER ? 1 : -1,
       team: side.team.map(m => ({ ...m, look: build(drawings[m.creature], m), wins: winsOf(drawings[m.creature]) })),
       enters: [], attacks: {}, hits: {}, misses: {}, faints: {},
@@ -166,8 +198,8 @@ function prepare(data, viewer) {
     else if (e.type === "faint") S.faints[e.creature] = e;
     else if (e.type === "end") END = e;
   }
-  t = 0; playing = true;
-  $("notice").hidden = true; $("hud").hidden = false; $("controls").hidden = false;
+  t = mode === "practice" ? -3 : 0; playing = true;   // practice counts down 3-2-1 while the cards show
+  $("notice").hidden = $("cards").hidden = true; $("hud").hidden = false; $("controls").hidden = false;
   $("play").textContent = "Pause";
   $("again").hidden = mode !== "practice";
   for (const id of ["play", "restart", "speed"]) $(id).hidden = mode === "live";
@@ -379,10 +411,26 @@ function drawBanner(time) {
   drawText(why, STAGE_W / 2, 305, 40, "#C9CFE6", a);
 }
 
+// During the countdown, each side's buff card shows where its creatures will stand.
+function drawCards() {
+  for (const S of Object.values(SIDES)) {
+    if (!S.buff) continue;
+    const x = HOME[S.pos];
+    drawText(S.buff.good ? "buff" : "debuff", x, 450, 34, S.buff.good ? "#B8F0A8" : "#FFA79F", 1);
+    drawText(S.buff.name, x, 510, 64, "#ffffff", 1);
+  }
+}
+
 // ---------- HUD ----------
 function updatePanel(panel, S, f, time) {
   const q = sel => panel.querySelector(sel);
   q(".player").textContent = S.key === VIEWER ? `${S.name} (you)` : S.name;
+  const chip = q(".buff");
+  chip.hidden = !S.buff;
+  if (S.buff && chip.dataset.id !== S.buff.id) {
+    chip.dataset.id = S.buff.id; chip.className = "buff " + (S.buff.good ? "good" : "bad");
+    chip.textContent = `${S.buff.name}: ${S.buff.text}`; chip.title = chip.textContent;
+  }
   const m = f ? f.m : S.team[0];
   q(".cname").textContent = m ? m.name + (m.wins > CROWN_WINS ? " 👑" : "") : "";
   const hp = f ? Math.max(0, Math.round(f.hp)) : m ? m.maxHp : 0, max = m ? m.maxHp : 1;
@@ -411,7 +459,7 @@ function frame(now) {
     fighters.forEach(f => drawFighter(f, t));
     fighters.forEach(f => drawEffects(f, t));
     drawBanner(t);
-    if (t < 0) drawText(String(Math.ceil(-t)), STAGE_W / 2, 330, 180, "#F2B134", 1);
+    if (t < 0) { drawText(String(Math.ceil(-t)), STAGE_W / 2, 330, 180, "#F2B134", 1); drawCards(); }
     const byKey = Object.fromEntries(fighters.map(f => [f.S.key, f]));
     updatePanel($("panelL"), SIDES[VIEWER], byKey[VIEWER], t);
     const other = VIEWER === "a" ? "b" : "a";
@@ -438,7 +486,7 @@ $("again").onclick = () => showPicker();
 // /battle.html?sample  plays frontend/sample-battle.json (a hand-written log)
 // Add &side=b to watch from side b, &at=12.5 to open paused at that second. Phase 6 will hand a live battle's log to window.playBattle(data, side).
 function showNotice(text) {
-  $("pick").hidden = true;
+  $("pick").hidden = $("cards").hidden = true;
   $("noticeText").textContent = text; $("noticeBack").hidden = false; $("notice").hidden = false;
 }
 const friendly = err => err.message === "Failed to fetch" ? "Can't reach the server. Make sure it is running." : err.message;
@@ -504,16 +552,66 @@ function buildFarm() {
 
 function showPicker() {
   LOG = null;
-  $("hud").hidden = $("controls").hidden = $("notice").hidden = true;
+  $("hud").hidden = $("controls").hidden = $("notice").hidden = $("cards").hidden = true;
   $("pick").hidden = false;
 }
 
-async function startPractice(team) {
+// ---------- buff cards: 3 face-down, 2 help and 1 hurts; flip one ----------
+const FLIP_MS = 600, REVEAL_MS = 1900;   // flip yours, then the other two, then the battle starts
+
+function showCards(onPick) {
+  LOG = null;
+  for (const id of ["pick", "notice", "livePanel", "hud", "controls"]) $(id).hidden = true;
+  $("cards").hidden = false; $("cardsStatus").textContent = "";
+  $("hand").replaceChildren(...[0, 1, 2].map(i => {
+    const card = document.createElement("button");
+    card.type = "button"; card.className = "card"; card.setAttribute("aria-label", `Card ${i + 1}, face down`);
+    card.innerHTML = '<span class="inner"><span class="face back"><span>?</span></span><span class="face front"><span class="tag"></span><b></b><small></small></span></span>';
+    card.onclick = () => { for (const c of $("hand").children) c.disabled = true; onPick(i); };
+    return card;
+  }));
+}
+
+// Turn the cards over: the picked one first, the other two a moment later.
+function revealCards(hand, picked) {
+  [...$("hand").children].forEach((card, i) => {
+    const info = hand[i];
+    card.disabled = true;
+    card.querySelector(".tag").textContent = info.good ? "buff" : "debuff";
+    card.querySelector("b").textContent = info.name;
+    card.querySelector("small").textContent = info.text;
+    card.setAttribute("aria-label", `${info.name}: ${info.text}${i === picked ? " (your card)" : ""}`);
+    card.classList.add(info.good ? "good" : "bad", i === picked ? "mine" : "other");
+    setTimeout(() => card.classList.add("flipped"), i === picked ? 0 : FLIP_MS);
+  });
+}
+
+async function practiceCards(team) {
+  $("fight").disabled = $("randomTeam").disabled = true;
+  $("pickStatus").textContent = "Shuffling the cards…";
+  try {
+    const res = await fetch("/api/practice-hand");
+    if (res.status === 401) { location.assign("/login.html"); return; }
+    if (!res.ok) throw new Error("Couldn't deal the cards. Try again.");
+    const hand = await res.json();
+    showCards(i => {
+      revealCards(hand, i);
+      $("cardsStatus").textContent = `${hand[i].name}! ${hand[i].good ? "Nice." : "Uh oh."}`;
+      setTimeout(() => startPractice(team, hand[i].id), REVEAL_MS);
+    });
+  } catch (err) {
+    $("pickStatus").textContent = friendly(err);
+  } finally {
+    $("randomTeam").disabled = false; $("fight").disabled = picks.length !== 3;
+  }
+}
+
+async function startPractice(team, buff) {
   $("fight").disabled = $("randomTeam").disabled = true;
   $("pickStatus").textContent = "Getting the fighters ready…";
   try {
     const res = await fetch("/api/practice-battle", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(team ? { team } : {})
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team, buff })
     });
     if (res.status === 401) { location.assign("/login.html"); return; }
     const data = await res.json().catch(() => ({}));
@@ -522,21 +620,22 @@ async function startPractice(team) {
     $("pick").hidden = true;
     prepare(data, "a");
   } catch (err) {
+    showPicker();
     $("pickStatus").textContent = friendly(err);
   } finally {
     $("randomTeam").disabled = false; $("fight").disabled = picks.length !== 3;
   }
 }
-$("fight").onclick = () => LIVE ? send("lock", { team: picks.slice() }) : startPractice(picks.slice());
+$("fight").onclick = () => LIVE ? send("lock", { team: picks.slice() }) : practiceCards(picks.slice());
 $("randomTeam").onclick = () => {
-  if (!LIVE) return startPractice(null);
   picks = [...farm].sort(() => Math.random() - .5).slice(0, 3).map(c => c.id);
-  renderPicks(); send("lock", { team: picks.slice() });
+  renderPicks();
+  if (LIVE) send("lock", { team: picks.slice() }); else practiceCards(picks.slice());
 };
 
 // ---------- live battle with a friend: /battle.html?room=<battleId> (server: rooms.py) ----------
 // The server sends this player's whole view after every change ("battle" event); the page just shows it.
-let LIVE = null;   // { id, socket, view, offset, logKey, panelKey }
+let LIVE = null;   // { id, socket, view, offset, logKey, panelKey, cardsFor, revealed, holdUntil, hold }
 const liveTime = () => (Date.now() + LIVE.offset - LIVE.view.startAt) / 1000;
 const secondsLeft = () => LIVE.view.deadline ? Math.max(0, Math.ceil((LIVE.view.deadline - Date.now() - LIVE.offset) / 1000)) : 0;
 
@@ -550,7 +649,7 @@ const homeButtons = () => [makeButton("Farm", "/world.html"), makeButton("Friend
 
 function showMessage(title, text, buttons) {
   LOG = null;
-  for (const id of ["pick", "livePanel", "hud", "controls"]) $(id).hidden = true;
+  for (const id of ["pick", "cards", "livePanel", "hud", "controls"]) $(id).hidden = true;
   $("noticeTitle").textContent = title; $("noticeText").textContent = text;
   $("noticeButtons").replaceChildren(...buttons); $("notice").hidden = false;
 }
@@ -563,7 +662,7 @@ async function send(event, data = {}) {
   } catch { say("The server didn't answer. Check your connection."); }
 }
 function say(text) {
-  const target = !$("pick").hidden ? "pickStatus" : !$("livePanel").hidden ? "lpText" : "noticeText";
+  const target = !$("pick").hidden ? "pickStatus" : !$("cards").hidden ? "cardsStatus" : !$("livePanel").hidden ? "lpText" : "noticeText";
   $(target).textContent = text;
   if (LIVE) LIVE.sayUntil = Date.now() + 4000;   // keep the message up a moment before countdowns overwrite it
 }
@@ -578,6 +677,8 @@ function renderLive(v) {
       makeButton("Let's go!", () => send("answer", { accept: true }), true)]);
   } else if (v.stage === "cancelled") {
     showMessage("No battle", v.reason || "This battle was cancelled.", homeButtons());
+  } else if (v.stage === "picking" && v.locked.you) {
+    liveCards(v);
   } else if (v.stage === "picking") {
     LOG = null;
     for (const id of ["notice", "livePanel", "hud", "controls"]) $(id).hidden = true;
@@ -589,12 +690,36 @@ function renderLive(v) {
     if (v.locked.you && v.myTeam) picks = v.myTeam.slice();
     renderPicks();
   } else {   // playing, prize, done: the same replay, then the prize and result panels
-    $("pick").hidden = $("notice").hidden = true;
-    const key = `${v.log.duration}:${v.log.result.reason}`;
-    if (!LOG || LIVE.logKey !== key) { prepare({ log: v.log, creatures: v.creatures }, v.you); LIVE.logKey = key; }
-    LIVE.panelKey = null;
-    liveTick();
+    const wait = (LIVE.holdUntil || 0) - Date.now();   // let the card flip finish first
+    clearTimeout(LIVE.hold);
+    if (wait > 0) LIVE.hold = setTimeout(() => LIVE.view === v && showLiveReplay(v), wait);
+    else showLiveReplay(v);
   }
+}
+
+function showLiveReplay(v) {
+  $("pick").hidden = $("notice").hidden = $("cards").hidden = true;
+  const key = `${v.log.duration}:${v.log.result.reason}`;
+  if (!LOG || LIVE.logKey !== key) { prepare({ log: v.log, creatures: v.creatures }, v.you); LIVE.logKey = key; }
+  LIVE.panelKey = null;
+  liveTick();
+}
+
+// Team locked in: the 3 face-down cards (built once per battle, so a server update doesn't reshuffle them).
+function liveCards(v) {
+  const reveal = (hand, picked) => { if (!LIVE.revealed) { LIVE.revealed = true; revealCards(hand, picked); } };
+  if (LIVE.cardsFor !== v.battleId) {
+    LIVE.cardsFor = v.battleId;
+    showCards(async i => {
+      const res = await send("card", { index: i });
+      if (!res || !res.ok) { for (const card of $("hand").children) card.disabled = false; return; }
+      LIVE.holdUntil = Date.now() + REVEAL_MS;
+      reveal(res.hand, i);
+      $("cardsStatus").textContent = `${res.hand[i].name}! ${res.hand[i].good ? "Nice." : "Uh oh."}`;
+      LIVE.sayUntil = Date.now() + REVEAL_MS;
+    });
+  }
+  if (v.cards.picked !== null && v.cards.hand) reveal(v.cards.hand, v.cards.picked);   // e.g. after a reload
 }
 
 // Runs a few times a second: countdowns, the Leave button, and the panel after the replay.
@@ -604,7 +729,11 @@ function liveTick() {
   if (v.stage === "invited" && !quiet) {
     $("noticeText").textContent = v.inviter ? `Waiting for ${them} to say yes… ${secondsLeft()}s` : `${them} wants to battle! ${secondsLeft()}s`;
   }
-  if (v.stage === "picking" && !quiet) {
+  if (v.stage === "picking" && v.locked.you && !quiet) {
+    const ready = v.locked.opponent ? `${them} is ready.` : `${them} is still choosing…`;
+    $("cardsStatus").textContent = v.cards.picked === null
+      ? `Pick a card! ${ready} ${secondsLeft()}s left` : `Waiting for ${them}… ${secondsLeft()}s left`;
+  } else if (v.stage === "picking" && !quiet) {
     const left = `${secondsLeft()}s left`;
     $("pickStatus").textContent = v.locked.you
       ? `Locked in! Waiting for ${them}… ${left}`

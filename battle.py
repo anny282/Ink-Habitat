@@ -1,6 +1,6 @@
 """Battle engine (CREATURE_SPEC.md, "Battle log"). Pure: no database, no clock, no network.
 
-run_battle(teamA, teamB, seed) -> log. The same teams and seed always give the same log, so the
+run_battle(teamA, teamB, seed, buffs) -> log. The same teams and seed always give the same log, so the
 server runs it once and both clients only play the log back. The server adds battleId, startAt,
 each side's userId and name, and prize; everything else in the log comes from here.
 
@@ -34,6 +34,29 @@ DAMAGE_BASE = 15
 DAMAGE_PER_ATTACK = 0.5      # baseAttack 1..10 -> 15.5..20 before crits and variance; matters, doesn't decide
 DAMAGE_SPREAD = 0.3          # each hit is +-30%
 FIRST_ATTACK = (0.3, 0.6)    # first attack after READY + this many intervals, a bit random so sides don't sync
+
+# Buff cards: after picking a team, each player draws one of 3 face-down cards (2 buffs, 1 debuff, shuffled).
+# A card changes only its own team. Each field applies to every creature on the team:
+#   hp: max hp   crit / dodge: chance, added to the size-based chance (each kept within 0..MAX_CHANCE)
+#   damage: hits do this much more (-0.04 = 4% less)   speed: attacks this much more often (-0.04 = 4% slower)
+#   ambush / fumble: the team's first attack of the battle always lands and crits / always misses
+# Battles are long, so small edges add up: +10 hp alone wins 67%. Tuned with battle_sim.py so every buff wins
+# about 60% against no card and every debuff about 36% (the mirror image, since about 4% are draws).
+BUFFS = {
+    "tough":    {"good": True,  "name": "Tough Hide",   "hp": 6},
+    "sharp":    {"good": True,  "name": "Sharp Claws",  "crit": 0.05},
+    "slippery": {"good": True,  "name": "Slippery",     "dodge": 0.04},
+    "snack":    {"good": True,  "name": "Power Snack",  "damage": 0.04},
+    "quick":    {"good": True,  "name": "Quick Feet",   "speed": 0.04},
+    "ambush":   {"good": True,  "name": "Ambush",       "ambush": True},
+    "tummy":    {"good": False, "name": "Tummy Ache",   "hp": -6},
+    "clumsy":   {"good": False, "name": "Clumsy",       "crit": -0.02, "dodge": -0.02},
+    "sleepy":   {"good": False, "name": "Sleepy",       "speed": -0.04},
+    "noodle":   {"good": False, "name": "Noodle Arms",  "damage": -0.04},
+    "fright":   {"good": False, "name": "Stage Fright", "fumble": True},
+}
+HAND = (2, 1)                # buffs and debuffs in each hand of 3
+MAX_CHANCE = 0.5
 
 
 # ---------- stats ----------
@@ -76,8 +99,49 @@ def base_damage(base_attack):
     return DAMAGE_BASE + DAMAGE_PER_ATTACK * base_attack
 
 
-def snapshot(creature):
-    """The team entry saved in the log: stats frozen at battle time."""
+# ---------- buff cards ----------
+
+def describe(card):
+    """What the card says once it's flipped, made from its numbers so the text can't drift from the effect."""
+    pct = lambda v: f"{'+' if v > 0 else '-'}{round(abs(v) * 100)}%"
+    if card.get("ambush"):
+        return "Your first attack of the battle always lands and crits"
+    if card.get("fumble"):
+        return "Your first attack of the battle always misses"
+    if "crit" in card and "dodge" in card and card["crit"] == card["dodge"]:
+        return f"{pct(card['crit'])} crit and dodge chance"
+    if "hp" in card:
+        return f"{'+' if card['hp'] > 0 else '-'}{abs(card['hp'])} hp for every creature"
+    if "crit" in card:
+        return f"{pct(card['crit'])} crit chance"
+    if "dodge" in card:
+        return f"{pct(card['dodge'])} dodge chance"
+    if "damage" in card:
+        return f"Hits do {round(abs(card['damage']) * 100)}% {'more' if card['damage'] > 0 else 'less'} damage"
+    if "speed" in card:
+        return f"Attacks {round(abs(card['speed']) * 100)}% {'faster' if card['speed'] > 0 else 'slower'}"
+    return ""
+
+
+def card_info(buff_id):
+    """The card as players and the log see it, or None for no card."""
+    if buff_id is None:
+        return None
+    card = BUFFS[buff_id]
+    return {"id": buff_id, "name": card["name"], "text": describe(card), "good": card["good"]}
+
+
+def deal(rng):
+    """A hand of 3 buff ids, face-down order: HAND[0] buffs and HAND[1] debuffs, shuffled."""
+    good = [k for k, c in BUFFS.items() if c["good"]]
+    bad = [k for k, c in BUFFS.items() if not c["good"]]
+    hand = rng.sample(good, HAND[0]) + rng.sample(bad, HAND[1])
+    rng.shuffle(hand)
+    return hand
+
+
+def snapshot(creature, buff_id=None):
+    """The team entry saved in the log: stats frozen at battle time, the card's hp already added."""
     if not isinstance(creature, dict) or not isinstance(creature.get("id"), str):
         raise ValueError("each team member must be a creature with an id")
     battle = creature.get("battle") if isinstance(creature.get("battle"), dict) else {}
@@ -88,7 +152,7 @@ def snapshot(creature):
         "name": settings.get("name") or "?",
         "size": size,
         "baseAttack": clamp_int(battle.get("baseAttack"), 1, 10, 5),
-        "maxHp": max_hp(size),
+        "maxHp": max(1, max_hp(size) + (BUFFS[buff_id].get("hp", 0) if buff_id else 0)),
     }
 
 
@@ -98,9 +162,12 @@ def secs(t):
     return round(t / 100, 2)
 
 
-def simulate(team_a, team_b, rng):
-    """Fight two lists of snapshots (any length >= 1). Returns (events, result, end time in cs)."""
+def simulate(team_a, team_b, rng, buffs=None):
+    """Fight two lists of snapshots (any length >= 1). buffs maps a side to its card id (hp is already in the
+    snapshots). Returns (events, result, end time in cs)."""
     teams = {"a": team_a, "b": team_b}
+    card = {s: BUFFS[(buffs or {}).get(s)] if (buffs or {}).get(s) else {} for s in teams}
+    opened = set()                         # first creatures that already made their first attack
     other = {"a": "b", "b": "a"}
     hp = {s: [m["maxHp"] for m in teams[s]] for s in teams}
     slot = {"a": None, "b": None}         # who is on the field (None while waiting to enter)
@@ -120,8 +187,14 @@ def simulate(team_a, team_b, rng):
     def arm(side, t):
         """Restart this side's attack timer: a new matchup starts fresh for both creatures."""
         timer[side] += 1
-        interval = attack_interval(current(side)["size"])
+        interval = interval_of(side)
         push(t + READY + round(rng.uniform(*FIRST_ATTACK) * interval), 2, "attack", side, timer[side])
+
+    def interval_of(side):
+        return attack_interval(current(side)["size"]) / (1 + card[side].get("speed", 0))
+
+    def chance(base, side, key):
+        return min(MAX_CHANCE, max(0, base + card[side].get(key, 0)))
 
     def emit(t, **event):
         events.append({"t": secs(t), **event})
@@ -155,14 +228,20 @@ def simulate(team_a, team_b, rng):
                 continue                    # no attack whose hit would land after the time limit
             me, target = current(side), current(foe)
             emit(t, type="attack", side=side, creature=me["creature"], target=target["creature"])
-            if rng.random() < dodge_chance(target["size"]):
+            opener = slot[side] == 0 and me["creature"] not in opened   # the team's very first attack
+            opened.add(me["creature"])
+            ambush, fumble = opener and card[side].get("ambush"), opener and card[side].get("fumble")
+            # always draw both rolls, so a card never shifts the random numbers of the rest of the battle
+            dodge_roll, crit_roll = rng.random(), rng.random()
+            if fumble or (not ambush and dodge_roll < chance(dodge_chance(target["size"]), foe, "dodge")):
                 outcome = None
             else:
-                crit = rng.random() < crit_chance(me["size"])
+                crit = ambush or crit_roll < chance(crit_chance(me["size"]), side, "crit")
                 damage = base_damage(me["baseAttack"]) * rng.uniform(1 - DAMAGE_SPREAD, 1 + DAMAGE_SPREAD)
+                damage *= 1 + card[side].get("damage", 0)
                 outcome = (max(1, round(damage * (CRIT_MULTIPLIER if crit else 1))), crit)
             push(t + HIT_DELAY, 0, "hit", foe, (slot[foe], me["creature"], outcome))
-            gap = attack_interval(me["size"]) * rng.uniform(1 - ATTACK_JITTER, 1 + ATTACK_JITTER)
+            gap = interval_of(side) * rng.uniform(1 - ATTACK_JITTER, 1 + ATTACK_JITTER)
             push(t + round(gap), 2, "attack", side, data)
 
         elif kind == "hit":
@@ -195,21 +274,25 @@ def simulate(team_a, team_b, rng):
     return events, {"winner": winner, "reason": reason}, end_t
 
 
-def run_battle(team_a, team_b, seed):
-    """team_a and team_b are lists of exactly 3 creatures (spec JSON), in pick order; a is the inviter."""
+def run_battle(team_a, team_b, seed, buffs=None):
+    """team_a and team_b are lists of exactly 3 creatures (spec JSON), in pick order; a is the inviter.
+    buffs: {"a": card id or None, "b": ...}, each side's buff card."""
+    buffs = {s: (buffs or {}).get(s) for s in "ab"}
     for team in (team_a, team_b):
         if not isinstance(team, list) or len(team) != TEAM_SIZE:
             raise ValueError(f"each team must have exactly {TEAM_SIZE} creatures")
-    sides = {"a": [snapshot(c) for c in team_a], "b": [snapshot(c) for c in team_b]}
+    if any(b is not None and b not in BUFFS for b in buffs.values()):
+        raise ValueError("unknown buff card")
+    sides = {"a": [snapshot(c, buffs["a"]) for c in team_a], "b": [snapshot(c, buffs["b"]) for c in team_b]}
     for side in sides.values():
         if len({m["creature"] for m in side}) != TEAM_SIZE:
             raise ValueError("a team can't use the same creature twice")
-    events, result, end_t = simulate(sides["a"], sides["b"], random.Random(seed))
+    events, result, end_t = simulate(sides["a"], sides["b"], random.Random(seed), buffs)
     return {
         "version": 1,
         "seed": seed,
         "duration": secs(end_t),
-        "sides": {"a": {"team": sides["a"]}, "b": {"team": sides["b"]}},
+        "sides": {s: {"team": sides[s], "buff": card_info(buffs[s])} for s in "ab"},
         "events": events,
         "result": result,
     }

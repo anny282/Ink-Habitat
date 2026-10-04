@@ -295,10 +295,17 @@ def remove_friend(friend_id: str, user=Depends(current_user)):
 
 # ---------- practice battle (one laptop: your creatures against your creatures) ----------
 
+@app.get("/api/practice-hand")
+def practice_hand(user=Depends(current_user)):
+    """3 buff cards for a practice battle (2 buffs, 1 debuff, shuffled); the page shows them face-down."""
+    return [battle.card_info(c) for c in battle.deal(random)]
+
+
 @app.post("/api/practice-battle")
 def practice_battle(body: dict = Body(default=None), user=Depends(current_user)):
-    """Your team (3 creature ids from your farm, in fight order, or random if none are given) against
-    3 random creatures from your farm. Runs the real engine. Nothing is saved."""
+    """Your team (3 creature ids from your farm, in fight order, or random if none are given) and buff card
+    (from /api/practice-hand) against 3 random creatures from your farm with a random card from their own hand.
+    Runs the real engine. Nothing is saved."""
     farm = db.get_creatures(user["id"])
     if len(farm) < battle.TEAM_SIZE:
         raise HTTPException(400, f"You need at least {battle.TEAM_SIZE} creatures to battle. Draw a few more!")
@@ -312,8 +319,12 @@ def practice_battle(body: dict = Body(default=None), user=Depends(current_user))
         if not all(isinstance(i, str) and i in by_id for i in picks):
             raise HTTPException(400, "You can only pick creatures from your own farm.")
         team_a = [by_id[i] for i in picks]
+    buff = (body or {}).get("buff")
+    if buff is not None and (not isinstance(buff, str) or buff not in battle.BUFFS):
+        raise HTTPException(400, "That's not a buff card.")
     team_b = random.sample(farm, battle.TEAM_SIZE)
-    log = battle.run_battle(team_a, team_b, random.randrange(2**31))
+    buffs = {"a": buff, "b": random.choice(battle.deal(random))}
+    log = battle.run_battle(team_a, team_b, random.randrange(2**31), buffs)
     log.update(battleId="practice", startAt=datetime.now(timezone.utc).isoformat(), prize=None)
     log["sides"]["a"].update(userId=user["id"], name=user["username"])
     log["sides"]["b"].update(userId=None, name="Practice")

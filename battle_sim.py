@@ -21,13 +21,14 @@ def team(prefix, sizes, attacks):
     return [creature(f"{prefix}{i}", rng.randint(*sizes), rng.randint(*attacks)) for i in range(3)]
 
 
-def fight(sizes_a, sizes_b, attacks_a=(3, 8), attacks_b=(3, 8)):
+def fight(sizes_a, sizes_b, attacks_a=(3, 8), attacks_b=(3, 8), buff_a=None, buff_b=None):
     """N battles; sides swap who is a and b each time so going first can't skew it. Returns stats for the first group."""
     wins, outcomes, duration = 0, Counter(), 0
     for i in range(N):
         first, second = team("x", sizes_a, attacks_a), team("y", sizes_b, attacks_b)
         flip = i % 2 == 1
-        log = battle.run_battle(second, first, i) if flip else battle.run_battle(first, second, i)
+        log = (battle.run_battle(second, first, i, {"a": buff_b, "b": buff_a}) if flip
+               else battle.run_battle(first, second, i, {"a": buff_a, "b": buff_b}))
         winner = log["result"]["winner"]
         mine = "b" if flip else "a"
         outcomes["draw" if winner == "draw" else "win" if winner == mine else "loss"] += 1
@@ -37,7 +38,7 @@ def fight(sizes_a, sizes_b, attacks_a=(3, 8), attacks_b=(3, 8)):
 
 
 def report(label, outcomes, avg):
-    print(f"{label:<44} win {outcomes['win'] / N:6.1%}  draw {outcomes['draw'] / N:5.1%}  "
+    print(f"{label:<46} win {outcomes['win'] / N:6.1%}  draw {outcomes['draw'] / N:5.1%}  "
           f"timeout {outcomes['timeout'] / N:5.1%}  avg {avg:5.1f}s")
 
 
@@ -58,3 +59,8 @@ for label, strong, weak in [("attack 8-10 vs 1-3", (8, 10), (1, 3)),
 print("\nSmall vs big at equal attack (goal: about 50%)")
 for atk in (1, 5, 10):
     report(f"  small 5-35 vs big 65-100, attack {atk}", *fight((5, 35), (65, 100), (atk, atk), (atk, atk)))
+
+print("\nBuff cards vs no card, any sizes (goal: buffs about 60%, debuffs about 36%)")
+for buff_id, card in battle.BUFFS.items():
+    label = f"  {'+' if card['good'] else '-'} {card['name']}: {battle.describe(card)}"
+    report(label[:44], *fight((5, 100), (5, 100), buff_a=buff_id))

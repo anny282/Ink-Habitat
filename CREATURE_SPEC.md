@@ -263,11 +263,12 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 
 ## Battle log (v3)
 
-The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log`. The same teams and the same seed always give the exact same log. The server runs it once, saves the log, and sends it to both players. Clients never simulate; they only play the log back.
+The battle engine is a **pure function**: `run_battle(teamA, teamB, seed, buffs) -> log`. The same teams and the same seed always give the exact same log. The server runs it once, saves the log, and sends it to both players. Clients never simulate; they only play the log back.
 
 ### Battle rules (summary)
 
 - Each side brings **exactly 3** creatures, in the order they picked them. A player with fewer than 3 creatures can't battle yet. The engine rejects any team that isn't exactly 3. One creature per side is on the field at a time.
+- After locking in their team, each player flips **one of 3 face-down buff cards** dealt by the server: 2 buffs and 1 debuff, shuffled. The card changes only that player's team (for example +6 hp, +5% crit chance, or attacks 4% slower). If the pick timer runs out, a random card is picked. The card list and numbers live in `BUFFS` in `battle.py`.
 - Both creatures attack on their own timers, at the same time. Each attack can hit, miss or crit (seeded randomness).
 - When a creature faints, that side's next creature enters. The survivor stays in **with the hp it has left**.
 - The battle ends when one side has no creatures left (`knockout`), when a player disconnects (`forfeit`), or after 2 minutes (120 seconds, `timeout`). On timeout, the side with the larger share of its total hp left wins; equal shares are a `draw`.
@@ -285,9 +286,11 @@ The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log
 
   "sides": {
     "a": { "userId": "u1", "name": "anny",
-           "team": [ { "creature": "c1", "name": "Sir Noodle", "size": 42, "baseAttack": 6, "maxHp": 120 } ] },
+           "buff": { "id": "tough", "name": "Tough Hide", "text": "+6 hp for every creature", "good": true },
+           "team": [ { "creature": "c1", "name": "Sir Noodle", "size": 42, "baseAttack": 6, "maxHp": 156 } ] },
     "b": { "userId": "u2", "name": "jade",
-           "team": [ { "creature": "c7", "name": "Chicken", "size": 75, "baseAttack": 3, "maxHp": 180 } ] }
+           "buff": { "id": "sleepy", "name": "Sleepy", "text": "Attacks 4% slower", "good": false },
+           "team": [ { "creature": "c7", "name": "Chicken", "size": 75, "baseAttack": 3, "maxHp": 150 } ] }
   },
 
   "events": [
@@ -308,6 +311,7 @@ The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log
 
 - `a` is the player who sent the invite, `b` is the one who accepted. The replay always draws the **viewer's** side on the left and mirrors the opponent on the right.
 - `sides.*.team` always has exactly 3 entries (the example shows one each to stay short). It is a snapshot of the stats at battle time, so the replay and old battles don't change if a creature's stats change later. The replay loads each creature's drawing by its id.
+- `sides.*.buff` is the card that side flipped, or `null` (battles from before buff cards). `maxHp` already includes a card's hp change. `good` is `false` for a debuff.
 - `t` is seconds from `startAt`, rounded to 0.01. Events are sorted by `t`. Events with the same `t` play in list order.
 
 ### Events
