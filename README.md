@@ -41,6 +41,9 @@ Run `source venv/bin/activate` again in a new terminal before starting the serve
 - `auth.py` — password hashing and signed login cookies.
 - `gemini.py`, `elevenlabs.py` — part roles and animations, and each creature's voice clip.
 - `migrate_json.py` — moves creatures saved as JSON files (before TiDB) into an account.
+- `battle.py` — battle engine: `run_battle(teamA, teamB, seed)` turns two teams of 3 into a battle log (spec, "Battle log"). Same teams and seed, same log.
+- `battle_sim.py` — balance simulator for the engine's numbers: `python battle_sim.py`.
+- `test_battle.py` — engine checks: `python test_battle.py`.
 - `rig.py` — connects strokes with parent links and swing pivots when a creature is saved.
 - `data/audio/` — created automatically; stores each creature's voice clip.
 - `CREATURE_SPEC.md` — creature JSON format (v3).
