@@ -173,3 +173,46 @@ def delete_creature(owner_id, creature_id):
     """Deletes only a creature this user owns. Returns True if one was deleted."""
     with transaction() as cur:
         return cur.execute("DELETE FROM creatures WHERE id = %s AND owner_id = %s", (creature_id, owner_id)) == 1
+
+
+# ---------- friends (always mutual: one row each way) ----------
+
+def friends_of(user_id):
+    with transaction() as cur:
+        cur.execute(
+            "SELECT u.id, u.username FROM friendships f JOIN users u ON u.id = f.friend_id "
+            "WHERE f.user_id = %s ORDER BY u.username",
+            (user_id,),
+        )
+        return [{"id": r["id"], "username": r["username"]} for r in cur.fetchall()]
+
+
+def add_friend(user_id, friend_code):
+    """Returns (friend, problem). Adding by code makes both users friends right away."""
+    with transaction() as cur:
+        cur.execute("SELECT id, username FROM users WHERE friend_code = %s", (friend_code,))
+        friend = cur.fetchone()
+        if not friend:
+            return None, "No one has that friend code."
+        if friend["id"] == user_id:
+            return None, "That's your own friend code."
+        cur.execute("SELECT 1 FROM friendships WHERE user_id = %s AND friend_id = %s", (user_id, friend["id"]))
+        if cur.fetchone():
+            return None, f"You're already friends with {friend['username']}."
+        created = now()
+        cur.execute(
+            "INSERT IGNORE INTO friendships (user_id, friend_id, created_at) VALUES (%s, %s, %s), (%s, %s, %s)",
+            (user_id, friend["id"], created, friend["id"], user_id, created),
+        )
+    return {"id": friend["id"], "username": friend["username"]}, None
+
+
+def remove_friend(user_id, friend_id):
+    """Removes the friendship both ways. Returns True if there was one."""
+    with transaction() as cur:
+        removed = cur.execute(
+            "DELETE FROM friendships WHERE (user_id = %s AND friend_id = %s) OR (user_id = %s AND friend_id = %s)",
+            (user_id, friend_id, friend_id, user_id),
+        )
+    return removed > 0
+

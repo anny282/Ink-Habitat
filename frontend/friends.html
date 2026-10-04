@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Creature Farm Friends</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #E4E8F6;
+    --paper: #FFFFFF;
+    --ink: #26314F;
+    --ink-soft: #5C6688;
+    --marigold: #F2B134;
+    --berry: #C8413A;
+    --line: #C9CFE6;
+    --hand: "Gaegu", "Comic Sans MS", "Chalkboard SE", cursive;
+    --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; padding: 16px; }
+  .card { width: 100%; max-width: 420px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 26px 24px 22px; }
+  .back { color: var(--ink-soft); font-weight: 700; text-decoration: none; }
+  .back:hover { color: var(--ink); }
+  h1 { font-family: var(--hand); font-size: 2.6rem; line-height: 1; margin: 8px 0 18px; }
+  h2 { font-size: 1rem; margin: 0 0 6px; }
+  section { margin-bottom: 22px; }
+  .code { display: flex; align-items: center; gap: 10px; }
+  .code output { font-family: ui-monospace, Menlo, monospace; font-size: 1.5rem; font-weight: 700; letter-spacing: .12em; background: var(--sky); border-radius: 12px; padding: 6px 12px; }
+  small { display: block; color: var(--ink-soft); margin-top: 4px; font-size: .85rem; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: inherit; font-family: ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 12px; padding: 9px 12px; }
+  input:focus { outline: none; border-color: var(--ink); }
+  .btn { font: inherit; font-weight: 700; color: var(--ink); background: var(--paper); border: 2px solid var(--ink); border-radius: 12px; padding: 7px 14px; cursor: pointer; }
+  .btn.main { background: var(--marigold); box-shadow: 0 3px 0 var(--ink); }
+  .btn.main:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .msg { min-height: 1.5em; margin: 6px 0 0; font-weight: 700; }
+  .msg.bad { color: var(--berry); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  li { display: flex; align-items: center; gap: 10px; background: var(--sky); border-radius: 12px; padding: 8px 8px 8px 14px; }
+  li span { flex: 1; font-weight: 700; overflow-wrap: anywhere; }
+  li .btn { border-color: var(--line); font-size: .9rem; padding: 4px 10px; }
+  .empty { color: var(--ink-soft); margin: 0; }
+  :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <a class="back" href="/world.html">&larr; Back to my farm</a>
+  <h1>Friends</h1>
+
+  <section>
+    <h2>Your friend code</h2>
+    <div class="code"><output id="myCode">--------</output><button class="btn" type="button" id="copy">Copy</button></div>
+    <small>Share it with a friend so they can add you.</small>
+  </section>
+
+  <section>
+    <h2><label for="code">Add a friend</label></h2>
+    <form id="form">
+      <input id="code" maxlength="9" placeholder="Their code" autocomplete="off" spellcheck="false" required>
+      <button class="btn main" type="submit" id="add">Add</button>
+    </form>
+    <p class="msg" id="msg" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Your friends</h2>
+    <ul id="list"></ul>
+    <p class="empty" id="empty" hidden>No friends yet. Add one with their code.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (res.status === 401) { location.assign("/login.html"); throw new Error("Log in first"); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || "Something went wrong. Try again.");
+  return body;
+}
+
+function say(text, bad) {
+  $("msg").textContent = text;
+  $("msg").className = bad ? "msg bad" : "msg";
+}
+
+function render(friends) {
+  const list = $("list");
+  list.replaceChildren();
+  $("empty").hidden = friends.length > 0;
+  for (const friend of friends) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = friend.username;
+    const remove = document.createElement("button");
+    remove.className = "btn";
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.onclick = async () => {
+      if (!confirm(`Remove ${friend.username} from your friends?`)) return;
+      remove.disabled = true;
+      try {
+        await api(`/api/friends/${encodeURIComponent(friend.id)}`, { method: "DELETE" });
+        say(`Removed ${friend.username}.`);
+        load();
+      } catch (err) { say(err.message, true); remove.disabled = false; }
+    };
+    li.append(name, remove);
+    list.append(li);
+  }
+}
+
+const load = () => api("/api/friends").then(render).catch(err => say(err.message, true));
+
+api("/api/me").then(me => { $("myCode").textContent = me.friendCode; }).catch(() => {});
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("myCode").textContent); say("Copied your code."); }
+  catch { say("Couldn't copy. Select the code and copy it by hand.", true); }
+};
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("add").disabled = true;
+  say("");
+  try {
+    const friend = await api("/api/friends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: $("code").value })
+    });
+    $("code").value = "";
+    say(`You and ${friend.username} are now friends.`);
+    load();
+  } catch (err) {
+    say(err.message === "Failed to fetch" ? "Can't reach the server. Make sure it is running." : err.message, true);
+  }
+  $("add").disabled = false;
+});
+
+load();
+</script>
+</body>
+</html>

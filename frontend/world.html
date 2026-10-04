@@ -15,7 +15,7 @@ canvas{display:block}
 .dev{margin-top:16px;font-size:12px;border-top:1px solid #0002;padding-top:10px;display:grid;gap:6px}
 </style></head><body>
 <canvas id="c"></canvas>
-<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><span id="who" hidden></span><button id="logout">Log out</button></div>
+<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><a href="/friends.html">Friends</a><span id="who" hidden></span><button id="logout">Log out</button></div>
 <div id="spaceNotice" hidden style="position:fixed;top:58px;left:10px;max-width:340px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There is no safe space for another creature. Delete one from the Creatures list to make room.</div>
 <div id="side"><h3>Creatures</h3><div id="list"></div><div class="dev"><b>Dev tools</b><button id="ex">Add example</button><label>Load JSON <input type="file" id="f" accept=".json"></label></div></div>
 <script>

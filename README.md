@@ -33,6 +33,7 @@ Run `source venv/bin/activate` again in a new terminal before starting the serve
 ## Pages and files
 
 - `frontend/login.html` — sign up and log in.
+- `frontend/friends.html` — your friend code, add friends by code, and remove friends.
 - `frontend/draw-creature.html` — draw a creature and submit it to the server.
 - `frontend/world.html` — view, animate, and manage saved creatures.
 - `server.py` — local web server, accounts, and creature API.

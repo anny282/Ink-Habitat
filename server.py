@@ -23,7 +23,7 @@ FRONTEND = BASE / "frontend"
 AUDIO = BASE / "data" / "audio"
 AUDIO.mkdir(parents=True, exist_ok=True)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html"}
+PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html", "/friends.html"}
 app = FastAPI(title="StromHacks Creature World")
 
 
@@ -202,6 +202,34 @@ def delete_creature(creature_id: str, user=Depends(current_user)):
         raise HTTPException(404, "Creature not found")
     (AUDIO / f"{creature_id}.mp3").unlink(missing_ok=True)
     return {"deleted": creature_id}
+
+
+# ---------- friends (add by friend code; friendship is mutual) ----------
+
+@app.get("/api/friends")
+def list_friends(user=Depends(current_user)):
+    return db.friends_of(user["id"])
+
+
+@app.post("/api/friends")
+def add_friend(body: dict = Body(...), user=Depends(current_user)):
+    code = body.get("code")
+    code = re.sub(r"[\s-]", "", code).upper() if isinstance(code, str) else ""
+    if len(code) != 8:
+        raise HTTPException(400, "A friend code is 8 letters and numbers.")
+    friend, problem = db.add_friend(user["id"], code)
+    if problem:
+        raise HTTPException(400, problem)
+    return friend
+
+
+@app.delete("/api/friends/{friend_id}")
+def remove_friend(friend_id: str, user=Depends(current_user)):
+    if not ID_RE.fullmatch(friend_id):
+        raise HTTPException(400, "Invalid friend id")
+    if not db.remove_friend(user["id"], friend_id):
+        raise HTTPException(404, "Friend not found")
+    return {"removed": friend_id}
 
 
 @app.middleware("http")
