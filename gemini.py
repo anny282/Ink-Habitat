@@ -59,6 +59,7 @@ def describe(part, body_box):
         "center": [round(cx), round(cy)],
         "size": [round(w), round(h)],
         "length": round(stroke_length(part["points"])),
+        "attached_to": part.get("parent"),
     }
 
 
@@ -120,32 +121,68 @@ def build_prompt(settings, body_id, summary):
     )
 
 
-def call_gemini(prompt):
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is not set")
-    model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+# Tried in order. Each model has its own free-tier daily quota (about 20 requests). The fast
+# lite models go first; the bigger flash models are often overloaded. Override with GEMINI_MODEL=a,b,c.
+DEFAULT_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+]
+PER_MODEL_TIMEOUT = 12  # seconds
+TOTAL_BUDGET = 30       # seconds for the whole Gemini step before falling back to rules
+out_of_quota = set()    # models that said their daily quota is used up (skipped until restart)
+
+
+def models():
+    names = [m.strip() for m in os.environ.get("GEMINI_MODEL", "").split(",") if m.strip()]
+    return [m for m in names or DEFAULT_MODELS if m not in out_of_quota]
+
+
+def call_model(model, key, prompt, timeout):
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9},
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.9,
+                             "thinkingConfig": {"thinkingLevel": "low"}},
     }
     req = urllib.request.Request(
         API_URL.format(model=model),
         data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json", "x-goog-api-key": key},
     )
-    for attempt in range(2):  # one retry for overload / rate limit
-        try:
-            with urllib.request.urlopen(req, timeout=30) as res:
-                data = json.loads(res.read())
-            break
-        except urllib.error.HTTPError as e:
-            if attempt == 0 and (e.code == 429 or e.code >= 500):
-                time.sleep(2)
-                continue
-            raise RuntimeError(f"Gemini HTTP {e.code}: {e.read()[:300]!r}") from e
+    with urllib.request.urlopen(req, timeout=timeout) as res:
+        data = json.loads(res.read())
     text = data["candidates"][0]["content"]["parts"][0]["text"]
     return json.loads(text)
+
+
+def call_gemini(prompt):
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is not set")
+    deadline = time.monotonic() + TOTAL_BUDGET
+    errors = []
+    for model in models():
+        left = deadline - time.monotonic()
+        if left < 2:
+            errors.append("out of time")
+            break
+        try:
+            ai = call_model(model, key, prompt, min(PER_MODEL_TIMEOUT, left))
+            print(f"[gemini] answered by {model}")
+            return ai
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:3000].decode(errors="replace")
+            errors.append(f"{model}: HTTP {e.code}")
+            if e.code in (401, 403) or "API_KEY" in detail:  # bad key: other models won't help
+                raise RuntimeError(f"Gemini HTTP {e.code}: {detail[:300]}") from e
+            if e.code == 429 and "PerDay" in detail:
+                out_of_quota.add(model)
+        except (OSError, ValueError, KeyError, IndexError) as e:  # timeout, network, bad JSON
+            errors.append(f"{model}: {type(e).__name__}")
+    raise RuntimeError("no Gemini model answered (" + ", ".join(errors) + ")")
 
 
 # ---------- validation and clamping (clamp table in CREATURE_SPEC.md) ----------

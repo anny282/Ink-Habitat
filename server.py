@@ -136,7 +136,12 @@ def list_creatures():
 
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...)):
-    return save(validate(creature))
+    creature = validate(creature)
+    rig_parts(creature["parts"])           # parent, pivot, z (Gemini's part summary uses the rig)
+    gemini.enrich(creature)                # role, moves, locomotion, idles
+    rig_parts(creature["parts"])           # redo z now that roles are known
+    creature = assign_id(fill_random(creature))
+    return write(elevenlabs.generate(creature, AUDIO, VOICE_IDS))
 
 
 @app.delete("/api/creatures/{creature_id}")
