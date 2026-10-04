@@ -74,6 +74,14 @@ def validate(creature):
     return creature
 
 
+def battle_size(battle):
+    """The drawing tool measures size; clamp it (spec clamp table: 5 to 100, default 40)."""
+    size = battle.get("size") if isinstance(battle, dict) else None
+    if isinstance(size, bool) or not isinstance(size, (int, float)) or size != size:
+        return 40
+    return round(min(100, max(5, size)))
+
+
 def roll_personality():
     return {
         "restSeconds": random.randint(2, 8),
@@ -185,12 +193,12 @@ def list_creatures(user=Depends(current_user)):
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     creature = validate(creature)
+    creature["battle"] = {"size": battle_size(creature.get("battle")), "wins": 0}  # wins: only the server counts them
     rig_parts(creature["parts"])           # parent, pivot, z (Gemini's part summary uses the rig)
-    gemini.enrich(creature)                # role, moves, locomotion, idles
+    gemini.enrich(creature)                # role, moves, locomotion, idles, battle.baseAttack
     rig_parts(creature["parts"])           # redo z now that roles are known
     creature = assign_id(fill_random(creature))
     creature["drawnBy"] = {"userId": user["id"], "name": user["username"]}
-    creature = db.with_defaults(creature)  # battle stats; real size and baseAttack come in phase 3
     return db.save_creature(user["id"], elevenlabs.generate(creature, AUDIO, VOICE_IDS))
 
 

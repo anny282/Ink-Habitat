@@ -388,9 +388,24 @@ function simplify(points) {
 }
 
 /* ===================== Build the draft creature ===================== */
-// Fills what the creation-side drawing tool owns: settings, parts[].points/color/width, bounds.
+// Fills what the creation-side drawing tool owns: settings, parts[].points/color/width, bounds, battle.size.
 // The body is marked here (spec body rule). Other parts' parent/pivot/z are left for the rigging code,
 // and role/moves for Gemini.
+// battle.size (spec v3): 100 * sqrt(inkW * inkH) / 500, measured on the raw canvas before normalizing.
+// The ink box includes stroke width, so a single straight line still has some area.
+function inkSize() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  strokes.forEach(s => s.points.forEach(([x, y]) => {
+    const r = s.width / 2;
+    minX = Math.min(minX, x - r); minY = Math.min(minY, y - r);
+    maxX = Math.max(maxX, x + r); maxY = Math.max(maxY, y + r);
+  }));
+  const inkW = Math.min(maxX, CANVAS_SIZE) - Math.max(minX, 0);
+  const inkH = Math.min(maxY, CANVAS_SIZE) - Math.max(minY, 0);
+  const size = Math.round(100 * Math.sqrt(Math.max(0, inkW) * Math.max(0, inkH)) / CANVAS_SIZE);
+  return Math.min(100, Math.max(5, size));
+}
+
 function buildDraft() {
   const bodyIdx = findBodyIndex(strokes);
   const bb = bbox(strokes[bodyIdx].points);
@@ -428,7 +443,7 @@ function buildDraft() {
     "c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   return {
-    version: 2,
+    version: 3,
     id,
     createdAt: new Date().toISOString(),
     settings: {
@@ -438,7 +453,8 @@ function buildDraft() {
       sound: clean("sound")
     },
     bounds: { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY },
-    parts
+    parts,
+    battle: { size: inkSize() }           // Gemini adds baseAttack, the server sets wins
   };
 }
 

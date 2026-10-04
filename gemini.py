@@ -1,6 +1,6 @@
-"""Gemini step (spec data flow 3-4): part roles, moves, locomotion and idles.
+"""Gemini step (spec data flow 3-4): part roles, moves, locomotion, idles and battle.baseAttack.
 
-The AI only decides those four things. Everything it returns is validated and clamped here,
+The AI only decides those five things. Everything it returns is validated and clamped here,
 and if the call fails (no key, network, bad JSON) a rule-based guess fills the same fields.
 """
 import json
@@ -91,7 +91,8 @@ Return exactly this shape:
   "idles": [
     {{"name": "short label", "duration": 2.5, "tracks": [TRACK, ...]}},
     {{"name": "short label", "duration": 2.0, "tracks": [TRACK, ...]}}
-  ]
+  ],
+  "baseAttack": 5
 }}
 
 Rules:
@@ -105,6 +106,8 @@ Rules:
             "scale": {{"amp": 0-0.4, "freq": hz, "phase": 0-1}},
             "offset": {{"ax": px, "ay": px, "freq": hz, "phase": 0-1}}}}
   Each channel is optional. Only target parts with moves = true, never the body.
+- baseAttack: a whole number 1-10 for how strong its attacks look. Claws, teeth, horns, spikes and a fierce
+  name push it up; round, soft shapes and a cute name push it down. Most creatures land between 3 and 8.
 - Limits: rotate amp 0-60, scale amp 0-0.4, offset -30 to 30, freq 0.2-4, phase 0-1, duration 1-5 seconds.
 """
 
@@ -258,6 +261,9 @@ def apply(creature, ai):
             "duration": num(a.get("duration"), 1, 5, 2),
             "tracks": tracks if tracks else clean_tracks(g["tracks"], moving),
         })
+
+    battle = creature.setdefault("battle", {})
+    battle["baseAttack"] = round(num(ai.get("baseAttack"), 1, 10, guess["baseAttack"]))
     return creature
 
 
@@ -298,11 +304,12 @@ def fallback(creature):
             {"name": names[1], "tracks": [{"part": p, "scale": {"amp": 0.15, "freq": 1, "phase": 0}}
                                           for p in moving]},
         ],
+        "baseAttack": 5,
     }
 
 
 def enrich(creature):
-    """Fill role, moves, locomotion and idles. Never raises: falls back to rules on any failure."""
+    """Fill role, moves, locomotion, idles and battle.baseAttack. Never raises: falls back to rules on any failure."""
     body_id, summary = summarize(creature["parts"])
     try:
         ai = call_gemini(build_prompt(creature["settings"], body_id, summary))
