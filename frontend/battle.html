@@ -512,16 +512,16 @@ $("speed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("s
 $("again").onclick = () => showPicker();
 
 // ---------- loading ----------
-// /battle.html         practice: pick 3 from your farm (or Random) against 3 random ones, run by the real engine
-// /battle.html?sample  plays frontend/sample-battle.json (a hand-written log)
-// Add &side=b to watch from side b, &at=12.5 to open paused at that second. Phase 6 will hand a live battle's log to window.playBattle(data, side).
+// /battle.html              the battle home: invite an online friend, or practice
+// /battle.html?practice     pick 3 from your farm (or Random) and a buff card, against 3 random ones
+// /battle.html?room=<id>    a live battle with a friend (server: rooms.py)
+// /battle.html?sample       plays frontend/sample-battle.json (a hand-written log);
+//                           add &side=b to watch from side b, &at=12.5 to open paused at that second
 function showNotice(text) {
   $("pick").hidden = $("cards").hidden = true;
   $("noticeText").textContent = text; $("noticeBack").hidden = false; $("notice").hidden = false;
 }
 const friendly = err => err.message === "Failed to fetch" ? "Can't reach the server. Make sure it is running." : err.message;
-
-window.playBattle = (data, side) => prepare(data, side);
 
 // ---------- pick your 3 ----------
 const PICK_KEY = "battle.lastTeam";
@@ -862,6 +862,7 @@ async function startLive(battleId) {
   setInterval(liveTick, 250);
 }
 
+// ---------- battle home: friends to invite, and practice ----------
 function showBattleHome() {
   $("notice").hidden = true;
   $("battleHome").hidden = false;

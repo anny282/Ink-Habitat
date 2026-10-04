@@ -114,7 +114,3 @@ def _z_for_child(part: dict[str, Any], points: list[tuple[float, float]], body: 
     body_y = sum(point[1] for point in body) / len(body)
     part_y = sum(point[1] for point in points) / len(points)
     return -1 if part_y > body_y else 1
-
-
-# Short alias for callers that prefer the name in the spec.
-rig = rig_parts

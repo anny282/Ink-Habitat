@@ -167,7 +167,6 @@ def test_forfeit_cuts_the_log():
 
 
 def test_buff_cards():
-    import collections
     rng = random.Random(5)
     for _ in range(200):  # every hand: 3 different cards, 2 buffs and 1 debuff
         hand = battle.deal(rng)

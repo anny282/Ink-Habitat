@@ -23,7 +23,7 @@ def team(prefix, sizes, attacks):
 
 def fight(sizes_a, sizes_b, attacks_a=(3, 8), attacks_b=(3, 8), buff_a=None, buff_b=None):
     """N battles; sides swap who is a and b each time so going first can't skew it. Returns stats for the first group."""
-    wins, outcomes, duration = 0, Counter(), 0
+    outcomes, duration = Counter(), 0
     for i in range(N):
         first, second = team("x", sizes_a, attacks_a), team("y", sizes_b, attacks_b)
         flip = i % 2 == 1

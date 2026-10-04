@@ -1,12 +1,14 @@
-"""Live battles with friends over Socket.IO (plan phase 6).
+"""Live battles with friends over Socket.IO, and who is online.
 
 One room per battle and one active battle per account. Battle state lives in memory in this server
 process (run a single worker); finished battles are written to TiDB in one transaction.
 
-    invite -> accept -> both pick 3 in secret and lock in -> each flips 1 of 3 face-down buff cards dealt
-    by the server (the pick timer picks anything missing) -> the server runs the engine once -> both replay the same log from the same start time
+    invite -> accept -> both pick 3 awake creatures in secret and lock in
+    -> each flips 1 of 3 face-down buff cards dealt by the server (the pick timer picks anything missing)
+    -> the server runs the engine once -> both replay the same log from the same start time
     -> the winner picks a prize from the loser's team (30 s, then the server picks at random)
-    -> one transaction moves the prize, adds a win to each winning creature, and saves the battle
+    -> one transaction moves the prize, adds a win to each winning creature, puts all 6 fighters
+       to sleep for SLEEP_SECONDS, and saves the battle
 
 After every change each player gets one "battle" event with their whole view of the battle, so a
 reload or a reconnect simply shows the current state. A player who drops has GRACE_SECONDS to come
@@ -62,6 +64,8 @@ def other(side):
     return "b" if side == "a" else "a"
 
 
+# ---------- presence ----------
+
 def is_online(user_id):
     return bool(online.get(user_id))
 
@@ -77,6 +81,8 @@ def presence_state(user_id):
 def is_busy(user_id):
     return user_id in active
 
+
+# ---------- after-battle sleep ----------
 
 def sleep_left(creature):
     """Seconds until this creature wakes up from its after-battle nap (0 if it's awake)."""
@@ -102,14 +108,14 @@ def team_problem(farm, name=None):
     return None
 
 
+# ---------- battle state ----------
+
 def creature_busy(creature_id):
     """True while the creature is on a locked-in team of a battle that isn't finished."""
     return any(c["id"] == creature_id
                for b in battles.values() if b["stage"] in ("picking", "playing", "prize")
                for team in b["picks"].values() if team for c in team)
 
-
-# ---------- battle state ----------
 
 def new_battle(inviter, friend):
     return {

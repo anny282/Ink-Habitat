@@ -1,6 +1,6 @@
 # StromHacks2026
 
-A creature farm: draw a creature, give it a name and personality, then watch it wander around the island.
+A creature farm: draw a creature, give it a name and personality, then watch it wander around the island. Add friends, visit their farms, and battle them with teams of 3.
 
 ## Run locally
 
@@ -93,6 +93,8 @@ python server.py
 
 Open [http://localhost:8000](http://localhost:8000) and sign up or log in. If the server is already running after you edit `.env`, stop it with `Ctrl+C` and start it again; settings are read at startup. The terminal message `[gemini] answered by ...` means Gemini worked. `[gemini] falling back to rules: ...` means it used built-in animation rules instead.
 
+Stop the server with `Ctrl+C`. Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
+
 ### Use a different TiDB cluster
 
 For example your own cluster for testing, or if the shared one is replaced:
@@ -104,13 +106,21 @@ For example your own cluster for testing, or if the shared one is replaced:
 
 A new cluster starts empty: accounts, friends and creatures from the old one don't come with it, and people on different clusters can't add each other or battle. To change the shared cluster for the whole team, update the four values in `.env.example`, commit that (never the password), and send everyone the new password privately.
 
-After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. On the Friends page, choose **Visit** to view a friend's creatures in their scenes; creatures taken out of the world are not shown. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
+## Using the app
 
-Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
+After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or remove it from the world; this does not delete it. On the Friends page, choose **Visit** to view a friend's creatures in their scenes; creatures removed from the world are not shown. Creatures, accounts and scene assignments are stored in the configured TiDB database.
 
 ## Battling a friend
 
-Add each other on the Friends page with your friend codes. When your friend is online, press **Battle**: they get a pop-up on their farm or friends page. You both secretly pick 3 creatures (60 seconds), watch the same battle at the same time, and the winner takes one creature from the loser's team (30 seconds to choose, then one is picked at random). Each player needs at least 3 creatures. Closing the tab for more than 10 seconds during a battle counts as a loss.
+Add each other on the Friends page with your friend codes. Then open **Battle** from the farm: it lists your friends and whether they are online, drawing, or offline. Press **Battle** next to an online friend; they get a pop-up on whatever page they have open. Each player needs at least 3 creatures.
+
+1. You both secretly pick 3 creatures (60 seconds). They fight in the order you pick them.
+2. Each of you flips one of 3 face-down buff cards: 2 help your team and 1 hurts it (for example +6 hp, or attacks 4% slower). Locking in late still leaves 15 seconds for the card; if time runs out, one is picked at random.
+3. You both watch the same battle at the same time, with each side's card shown during the countdown and on the hp panel.
+4. The winner takes one creature from the loser's team (30 seconds to choose, then one is picked at random).
+5. All 6 creatures that fought sleep for 1 minute: they can't battle, and they stand still on the farm with a "sleeping" tag.
+
+Closing the tab for more than 10 seconds during a battle counts as a loss. **Practice vs computer** on the Battle page runs the same battles (with cards) against 3 random creatures from your own farm; practice saves nothing and doesn't make creatures sleep.
 
 To try it on one computer, use two different browsers (or a normal and a private window) logged in as two accounts.
 
@@ -124,21 +134,44 @@ Live battles happen inside one running server, so both players must open the **s
 
 Only use `HOST=0.0.0.0` on a network you trust: anyone on that Wi-Fi can open the site.
 
-## Pages and files
+## Project layout
 
-- `frontend/login.html` — sign up and log in.
-- `frontend/friends.html` — your friend code, add friends by code, and remove friends.
-- `frontend/battle.html` — live battles with a friend (`?room=<id>`: waiting room, secret picks, synced replay, prize pick), practice battles and the replay. Pick 3 creatures from your farm (or Random) to fight 3 random ones; you need at least 3. `?sample` plays the hand-written log in `frontend/sample-battle.json`; `&at=12.5` opens paused at that second; `&side=b` watches from the other side.
-- `frontend/live.js` — battle invite pop-ups on the farm and friends pages.
-- `frontend/draw-creature.html` — draw a creature and submit it to the server.
-- `frontend/world.html` — view, animate, and manage saved creatures across Grasslands, Desert, and Ocean.
-- `server.py` — local web server and creature storage API.
+Server (Python, run with `python server.py`):
+
+- `server.py` — the web server: accounts, creatures, friends and practice battle API, and the login redirect. Serves only the files in `frontend/`, so `.env` and saved data are never exposed.
+- `auth.py` — passwords and signed login cookies.
+- `db.py` — every TiDB query: users, creatures, friends, battles.
+- `rooms.py` — live battles over Socket.IO (invites, picks, buff cards, prize, after-battle sleep) and who is online.
+- `battle.py` — the battle engine: a pure function from two teams, their buff cards and a seed to a battle log. All battle and buff card numbers live here.
 - `rig.py` — connects strokes with parent links and swing pivots when a creature is saved.
-- `data/audio/` — created automatically; stores each creature's voice clip.
-- `CREATURE_SPEC.md` — creature JSON format (v3).
-- `example_creature.json` — starter creature every new account gets.
+- `gemini.py` — asks Gemini for part roles, animations and attack (falls back to simple rules without a key).
+- `elevenlabs.py` — makes each creature's voice clip.
 
-The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. When a creature is saved, the server rigs it, asks Gemini for part roles and animations (falling back to simple rules if Gemini is unavailable), and makes its voice clip with ElevenLabs. Nearby creatures greet when they come within range: they face each other, play an idle, say their sound when available, pause, then wander off. Individual and world-wide cooldowns keep greetings occasional, and pathing keeps their outlines apart.
+Pages (`frontend/`):
+
+- `login.html` — sign up and log in.
+- `world.html` — your farm: view, animate and manage creatures across Grasslands, Desert and Ocean; `?visit=<friend id>` shows a friend's farm.
+- `draw-creature.html` — draw a creature and submit it to the server.
+- `friends.html` — your friend code, add or remove friends, visit their farms.
+- `battle.html` — the Battle page: friends to invite and practice; `?room=<id>` is a live battle (picks, buff cards, synced replay, prize); `?practice` is a practice battle; `?sample` plays the hand-written log in `sample-battle.json` (`&at=12.5` opens paused at that second, `&side=b` watches from the other side).
+- `live.js` — online status and battle invite pop-ups on every page.
+- `scenes/` — the three scenes' shapes and scenery.
+
+Data and docs:
+
+- `CREATURE_SPEC.md` — creature JSON format (v3) and the battle log format.
+- `example_creature.json` — starter creature every new account gets.
+- `data/audio/` — created automatically; stores each creature's voice clip.
+- `test-creatures/` — sample creatures for `migrate_json.py`.
+
+Tools (run from the project folder with the virtual environment active):
+
+- `python test_battle.py` — checks for the battle engine.
+- `python battle_sim.py` — fights thousands of battles and prints win rates, to tune `battle.py` (sizes, attack and every buff card).
+- `python migrate_json.py <username>` — moves creatures from the old JSON files into an account.
+- `python remeasure_sizes.py` — re-measures every creature's battle size with the current formula (add `--apply` to save).
+
+When a creature is saved, the server rigs it, asks Gemini for part roles and animations, and makes its voice clip with ElevenLabs. Nearby creatures greet when they come within range: they face each other, play an idle, say their sound when available, pause, then wander off. Individual and world-wide cooldowns keep greetings occasional, and pathing keeps their outlines apart.
 
 ## Troubleshooting
 

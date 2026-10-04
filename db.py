@@ -169,12 +169,6 @@ def get_creatures(owner_id):
     return [with_defaults(json.loads(r["data"])) for r in rows]
 
 
-def count_creatures(owner_id):
-    with transaction() as cur:
-        cur.execute("SELECT COUNT(*) AS n FROM creatures WHERE owner_id = %s", (owner_id,))
-        return cur.fetchone()["n"]
-
-
 def set_creature_scene(owner_id, creature_id, scene):
     """Moves a creature this user owns to a scene (None = out of the world). Returns it, or None if not theirs."""
     with transaction() as cur:
