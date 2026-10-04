@@ -104,7 +104,8 @@ function spawn(data){
     b:{minX:b.minX??-60,minY:b.minY??-60,maxX:b.maxX??60,maxY:b.maxY??60},
     scene:data.scene===null?null:(SCENES[data.scene]?data.scene:'grasslands'),x:0,y:0,dir:1,state:'rest',t:0,idle:null,idleT:0,clock:rnd(0,50),
     rest:clamp(p.restSeconds,1,10,3),every:clamp(p.speakEverySeconds,15,90,30),speed:clamp(p.speedPxPerSec,20,150,50),
-    speakT:rnd(6,16),bubble:'',bubbleT:0,react:0,greetReadyAt:worldTime+rnd(5,14)};
+    speakT:rnd(6,16),bubble:'',bubbleT:0,react:0,greetReadyAt:worldTime+rnd(5,14),
+    sleepUntil:Date.parse((data.battle&&data.battle.sleepUntil)||'')||0};
   if(c.scene&&!placeRandom(c))return false;
   creatures.push(c);if(c.scene)startRest(c);refreshList();return true;
 }
@@ -153,8 +154,14 @@ function maybeStartEncounters(){
     }
   }
 }
+// After a live battle a creature sleeps for a minute (server: rooms.SLEEP_SECONDS): it stays put and is quiet.
+const asleep=c=>c.sleepUntil>Date.now();
 function update(c,dt){
   c.clock+=dt;
+  if(c.sleepUntil){
+    if(asleep(c)){c.state='sleep';c.idle=null;if(c.bubbleT>0)c.bubbleT-=dt;return}
+    c.sleepUntil=0;startRest(c);refreshList();   // woke up
+  }
   if(c.state==='greeting'){
     c.greetingT+=dt;c.idleT+=dt;
     if(c.greetingT>=c.greetingIdleDuration){c.state='greetingWait';c.t=0}
@@ -206,6 +213,7 @@ function animate(c){
 function bodyFx(c){
   const t=c.clock,type=(c.d.locomotion&&c.d.locomotion.type)||'walk',w=c.state==='walk';
   let dx=0,dy=0,tilt=0;
+  if(c.state==='sleep')return{dx,dy,tilt};
   if(type==='fly')dy=-35+Math.sin(t*3)*5;
   else if(w){
     if(type==='walk')dy=-Math.abs(Math.sin(t*6))*3;
@@ -247,7 +255,17 @@ function drawCreature(c){
   ctx.setTransform(VIEW);
   const ly=c.y+(fx.dy+c.b.minY)*k-20,name=(c.d.settings&&c.d.settings.name)||'???';
   ctx.font='bold 24px system-ui';ctx.textAlign='center';ctx.lineWidth=6;ctx.strokeStyle='#fff';ctx.strokeText(name,c.x,ly);ctx.fillStyle='#333';ctx.fillText(name,c.x,ly);
-  if(c.bubbleT>0){
+  if(c.state==='sleep'){
+    const left=Math.ceil((c.sleepUntil-Date.now())/1000),tag='sleeping '+Math.floor(left/60)+':'+String(left%60).padStart(2,'0');
+    ctx.font='bold 20px system-ui';const w=ctx.measureText(tag).width+24;
+    ctx.fillStyle='#E4E8F6';ctx.strokeStyle='#26314F';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(c.x-w/2,ly-62,w,32,16);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#26314F';ctx.fillText(tag,c.x,ly-39);
+    for(let i=0;i<3;i++){   // Z's drifting up and fading
+      const f=(c.clock*.5+i/3)%1;ctx.globalAlpha=1-f;ctx.font='bold '+(18+f*14)+'px system-ui';
+      ctx.fillStyle='#5C6688';ctx.fillText('z',c.x+w/2+6+f*22,ly-62-f*40);
+    }
+    ctx.globalAlpha=1;
+  }else if(c.bubbleT>0){
     ctx.font='24px system-ui';const w=ctx.measureText(c.bubble).width+34;
     ctx.fillStyle='#fff';ctx.strokeStyle='#333';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(c.x-w/2,ly-86,w,50,16);ctx.fill();ctx.stroke();
     ctx.fillStyle='#222';ctx.fillText(c.bubble,c.x,ly-52);
@@ -275,7 +293,7 @@ cv.addEventListener('pointerdown',e=>{
   const wx=(e.clientX-VIEW0.e)/VIEW0.a,wy=(e.clientY-VIEW0.f)/VIEW0.d;
   const hit=creatures.filter(c=>c.scene===currentScene).sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;
     return Math.abs(wx-c.x)<hw&&wy>c.y+c.b.minY*k&&wy<c.y+c.b.maxY*k});
-  if(hit){hit.react=.6;say(hit)}
+  if(hit&&!asleep(hit)){hit.react=.6;say(hit)}
 });
 function showNoSpace(){document.getElementById('spaceNotice').hidden=false}
 
@@ -290,7 +308,7 @@ function refreshList(){const el=document.getElementById('list');if(!el)return;el
   document.getElementById('count').textContent=creatures.length;
   creatures.forEach(c=>{const row=document.createElement('div');row.className='row';row.appendChild(thumb(c));
     const n=document.createElement('span');n.textContent=(c.d.settings&&c.d.settings.name)||'???';row.appendChild(n);
-    const st=document.createElement('small');st.textContent=c.scene?'In '+SCENES[c.scene].label:'Out of the world';row.appendChild(st);
+    const st=document.createElement('small');st.textContent=(c.scene?'In '+SCENES[c.scene].label:'Out of the world')+(asleep(c)?' · sleeping':'');row.appendChild(st);
     const here=c.scene===currentScene,place=document.createElement('button');
     place.textContent=here?'Remove':'Put in '+SCENES[currentScene].label;place.className=here?'out':'place';
     place.onclick=()=>setCreatureScene(c,here?null:currentScene);

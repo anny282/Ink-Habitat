@@ -303,15 +303,16 @@ def practice_hand(user=Depends(current_user)):
 
 @app.post("/api/practice-battle")
 def practice_battle(body: dict = Body(default=None), user=Depends(current_user)):
-    """Your team (3 creature ids from your farm, in fight order, or random if none are given) and buff card
+    """Your team (3 awake creature ids from your farm, in fight order, or random if none are given) and buff card
     (from /api/practice-hand) against 3 random creatures from your farm with a random card from their own hand.
     Runs the real engine. Nothing is saved."""
     farm = db.get_creatures(user["id"])
-    if len(farm) < battle.TEAM_SIZE:
-        raise HTTPException(400, f"You need at least {battle.TEAM_SIZE} creatures to battle. Draw a few more!")
+    problem = rooms.team_problem(farm)
+    if problem:
+        raise HTTPException(400, problem if len(farm) >= battle.TEAM_SIZE else problem + " Draw a few more!")
     picks = (body or {}).get("team")
     if picks is None:
-        team_a = random.sample(farm, battle.TEAM_SIZE)
+        team_a = random.sample(rooms.awake(farm), battle.TEAM_SIZE)
     else:
         by_id = {c["id"]: c for c in farm}
         if not isinstance(picks, list) or len(picks) != battle.TEAM_SIZE or len(set(map(str, picks))) != battle.TEAM_SIZE:
@@ -319,6 +320,10 @@ def practice_battle(body: dict = Body(default=None), user=Depends(current_user))
         if not all(isinstance(i, str) and i in by_id for i in picks):
             raise HTTPException(400, "You can only pick creatures from your own farm.")
         team_a = [by_id[i] for i in picks]
+        sleepy = next((c for c in team_a if rooms.sleep_left(c)), None)
+        if sleepy:
+            raise HTTPException(400, f"{(sleepy.get('settings') or {}).get('name') or 'That creature'} is sleeping after a battle. "
+                                     f"It wakes up in {rooms.sleep_left(sleepy)}s.")
     buff = (body or {}).get("buff")
     if buff is not None and (not isinstance(buff, str) or buff not in battle.BUFFS):
         raise HTTPException(400, "That's not a buff card.")

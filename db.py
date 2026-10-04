@@ -147,7 +147,7 @@ def with_defaults(creature):
     """Upgrade v2 creatures on load (CREATURE_SPEC.md, v3 changes)."""
     creature.setdefault("drawnBy", None)
     battle = creature.get("battle") if isinstance(creature.get("battle"), dict) else {}
-    creature["battle"] = {"size": 40, "baseAttack": 5, "wins": 0, **battle}
+    creature["battle"] = {"size": 40, "baseAttack": 5, "wins": 0, "sleepUntil": None, **battle}
     return creature
 
 
@@ -245,10 +245,12 @@ def are_friends(user_id, other_id):
 
 # ---------- battles ----------
 
-def finish_battle(log, a_user, b_user, winner_user, loser_user, winning_ids, prize_id, picked_by):
+def finish_battle(log, a_user, b_user, winner_user, loser_user, winning_ids, prize_id, picked_by,
+                  fought_ids=(), sleep_until=None):
     """End of a live battle, all in one transaction (spec, "After the battle"): move the prize creature to
-    the winner (its drawnBy stays), add 1 to battle.wins for every creature on the winning team, and save
-    the battle with its log. Returns the prize actually given, or None (draw, or the creature is gone)."""
+    the winner (its drawnBy stays), add 1 to battle.wins for every creature on the winning team, put every
+    creature that fought to sleep until sleep_until (ISO time), and save the battle with its log.
+    Returns the prize actually given, or None (draw, or the creature is gone)."""
     prize = None
     with transaction() as cur:
         if prize_id and winner_user:
@@ -257,12 +259,15 @@ def finish_battle(log, a_user, b_user, winner_user, loser_user, winning_ids, pri
             if row and row["owner_id"] == loser_user:
                 cur.execute("UPDATE creatures SET owner_id = %s WHERE id = %s", (winner_user, prize_id))
                 prize = {"creature": prize_id, "pickedBy": picked_by}
-        for creature_id in winning_ids:
+        for creature_id in dict.fromkeys([*fought_ids, *winning_ids]):
             cur.execute("SELECT data FROM creatures WHERE id = %s FOR UPDATE", (creature_id,))
             row = cur.fetchone()
             if row:
                 creature = with_defaults(json.loads(row["data"]))
-                creature["battle"]["wins"] += 1
+                if creature_id in winning_ids:
+                    creature["battle"]["wins"] += 1
+                if creature_id in fought_ids:
+                    creature["battle"]["sleepUntil"] = sleep_until
                 cur.execute("UPDATE creatures SET data = %s WHERE id = %s", (json.dumps(creature), creature_id))
         log = {**log, "prize": prize}
         winner = log["result"]["winner"]

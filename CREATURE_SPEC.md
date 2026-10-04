@@ -209,7 +209,7 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 
 `{ "userId", "name" }` of the account that drew the creature, set by the server at creation time from the logged-in user. It never changes. When a creature is won in battle, only its owner in the database changes, so the farm can show "drawn by anny" on a creature someone else now owns. `null` for creatures made before accounts existed.
 
-### `battle` (four fields)
+### `battle` (five fields)
 
 | Field | Who fills it | Meaning | Range |
 |---|---|---|---|
@@ -217,6 +217,7 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 | `canvasSize` | **drawing tool** (sent as `battle.size`) | How big the drawing was on the canvas **before** normalizing: `100 * sqrt(inkW * inkH) / 500`, where `inkW` x `inkH` is the bounding box of all strokes in the 500 x 500 logical canvas. A doodle in the corner is small, a drawing that fills the page is near 100. `null` if unknown (older creatures). | 5 to 100 |
 | `baseAttack` | **AI-filled** | How strong its attacks look: claws, teeth, horns, spikes and a fierce name push it up, round soft shapes push it down. Whole number. | 1 to 10 |
 | `wins` | **server** | Battles this creature was on the winning team for. Starts at 0, only the server increments it. More than 5 wins shows a crown. | 0 and up |
+| `sleepUntil` | **server** | ISO time until which the creature sleeps after a live battle (1 minute, `SLEEP_SECONDS` in `rooms.py`). While asleep it can't be picked for any battle, and the farm shows it standing still with a "sleeping" tag. `null` when awake or never battled. | ISO date or `null` |
 
 `size` and `baseAttack` are raw stats. The battle engine turns them into fighting numbers (hp, damage, attack speed) with formulas that live in the engine code, so they can be tuned without changing saved creatures. The intent: every creature has the same hp and attack speed. Bigger creatures land critical hits more often; smaller creatures dodge more often. The two are balanced so that no size has an edge, only a different style. The replay draws each fighter at a size that grows with `size`, and shows a dodge for a `miss`.
 
@@ -331,4 +332,4 @@ The `hit` or `miss` for an attack always comes 0.3 seconds after its `attack`, s
 
 - `result` repeats the `end` event so the server and the lobby can read it without scanning `events`.
 - `prize`: the winner picks one creature from the **loser's battle team** within 30 seconds. If they don't, the server picks one at random and sets `pickedBy: "auto"`. `null` for a draw, and `null` until the pick is made.
-- In **one database transaction**, the server moves the prize creature to the winner (its `drawnBy` stays the same), adds 1 to `battle.wins` for every creature on the winning team, and saves the battle record.
+- In **one database transaction**, the server moves the prize creature to the winner (its `drawnBy` stays the same), adds 1 to `battle.wins` for every creature on the winning team, sets `battle.sleepUntil` on all 6 creatures that fought, and saves the battle record.

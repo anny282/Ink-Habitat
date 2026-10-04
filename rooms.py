@@ -13,6 +13,7 @@ reload or a reconnect simply shows the current state. A player who drops has GRA
 back; after that an invite or pick is cancelled, and a battle in progress is a forfeit.
 """
 import asyncio
+import math
 import random
 import secrets
 import time
@@ -32,6 +33,7 @@ COUNTDOWN_SECONDS = 4        # between both locking in and the replay starting
 PRIZE_SECONDS = 30
 GRACE_SECONDS = 10           # a player who drops (closed tab, reload) has this long to come back
 KEEP_FINISHED_SECONDS = 600  # how long a finished battle can still be looked at
+SLEEP_SECONDS = 60           # after a battle, its creatures sleep this long: no battles, no wandering the farm
 
 sio = socketio.AsyncServer(async_mode="asgi")
 sockets = {}   # sid -> {"id", "name"}
@@ -66,6 +68,30 @@ def is_online(user_id):
 
 def is_busy(user_id):
     return user_id in active
+
+
+def sleep_left(creature):
+    """Seconds until this creature wakes up from its after-battle nap (0 if it's awake)."""
+    until = ((creature.get("battle") or {}).get("sleepUntil"))
+    try:
+        return max(0, math.ceil(datetime.fromisoformat(until).timestamp() - now())) if until else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def awake(farm):
+    return [c for c in farm if not sleep_left(c)]
+
+
+def team_problem(farm, name=None):
+    """Why this farm can't field a team of awake creatures right now, or None. name: the owner, None for you."""
+    if len(farm) < battle.TEAM_SIZE:
+        return f"{name + ' needs' if name else 'You need'} at least {battle.TEAM_SIZE} creatures to battle."
+    wait = sorted(sleep_left(c) for c in farm)[battle.TEAM_SIZE - 1]   # until the 3rd creature is awake
+    if wait:
+        whose = f"{name}'s" if name else "Your"
+        return f"{whose} creatures are sleeping after a battle. Try again in {wait}s."
+    return None
 
 
 def creature_busy(creature_id):
@@ -179,9 +205,9 @@ async def picks_due(b):
         if b["cards"][side] is None:
             b["cards"][side] = random.randrange(len(b["hands"][side]))
         if b["picks"][side] is None:
-            farm = await asyncio.to_thread(db.get_creatures, b["sides"][side]["id"])
+            farm = awake(await asyncio.to_thread(db.get_creatures, b["sides"][side]["id"]))
             if len(farm) < battle.TEAM_SIZE:
-                return await cancel(b, f"{b['sides'][side]['name']} doesn't have {battle.TEAM_SIZE} creatures anymore.")
+                return await cancel(b, f"{b['sides'][side]['name']} doesn't have {battle.TEAM_SIZE} awake creatures.")
             b["picks"][side] = random.sample(farm, battle.TEAM_SIZE)
     await start_fight(b)
 
@@ -218,9 +244,11 @@ async def finish(b, prize_id, picked_by):
     win_user = users.get(winner)
     lose_user = users[other(winner)] if win_user else None
     winning_ids = [c["id"] for c in b["picks"][winner]] if win_user else []
+    fought_ids = [c["id"] for s in "ab" for c in b["picks"][s]]
+    sleep_until = datetime.fromtimestamp(now() + SLEEP_SECONDS, timezone.utc).isoformat()
     try:
         prize = await asyncio.to_thread(db.finish_battle, log, users["a"], users["b"], win_user, lose_user,
-                                        winning_ids, prize_id, picked_by)
+                                        winning_ids, prize_id, picked_by, fought_ids, sleep_until)
     except Exception as e:  # the battle still ends; nobody gains or loses a creature
         print(f"[rooms] couldn't save battle {b['id']}: {e}")
         prize, b["error"] = None, "The result couldn't be saved, so no creature changed hands."
@@ -328,14 +356,14 @@ async def invite(sid, data):
     if not user or not isinstance(friend_id, str):
         return {"error": "Who do you want to battle?"}
     # four lookups at once: each opens its own TiDB connection, so one after another is slow
-    friend, friends, mine_n, theirs_n = await asyncio.gather(
+    friend, friends, my_farm, their_farm = await asyncio.gather(
         asyncio.to_thread(db.user_by_id, friend_id), asyncio.to_thread(db.are_friends, user["id"], friend_id),
-        asyncio.to_thread(db.count_creatures, user["id"]), asyncio.to_thread(db.count_creatures, friend_id))
+        asyncio.to_thread(db.get_creatures, user["id"]), asyncio.to_thread(db.get_creatures, friend_id))
     if not friend or not friends:
         return {"error": "You can only battle your friends."}
-    for n, name in ((mine_n, "You need"), (theirs_n, f"{friend['username']} needs")):
-        if n < battle.TEAM_SIZE:
-            return {"error": f"{name} at least {battle.TEAM_SIZE} creatures to battle."}
+    problem = team_problem(my_farm) or team_problem(their_farm, friend["username"])
+    if problem:
+        return {"error": problem}
     async with state_lock():
         if is_busy(user["id"]):
             return {"error": "You're already in a battle."}
@@ -383,6 +411,10 @@ async def lock(sid, data):
             return {"error": f"Pick exactly {battle.TEAM_SIZE} different creatures."}
         if not all(isinstance(i, str) and i in farm for i in team):
             return {"error": "You can only pick creatures from your own farm."}
+        sleepy = next((farm[i] for i in team if sleep_left(farm[i])), None)
+        if sleepy:
+            name = (sleepy.get("settings") or {}).get("name") or "That creature"
+            return {"error": f"{name} is sleeping after a battle. It wakes up in {sleep_left(sleepy)}s."}
         b["picks"][side] = [farm[i] for i in team]
         if b["deadline"] - now() < CARD_SECONDS:   # locked in at the last second: still time to pick a card
             b["deadline"] = now() + CARD_SECONDS

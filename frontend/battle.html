@@ -72,6 +72,8 @@
   .live-panel p { margin: 0 0 10px; }
   .live-panel .farm { margin-bottom: 4px; }
   .tile:disabled { cursor: default; opacity: .75; }
+  .tile.asleep canvas { opacity: .4; filter: grayscale(1); }
+  .tile .nap { color: var(--ink); font-weight: 700; }
   .tile:disabled[aria-pressed="true"] { opacity: 1; }
   .notice .buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .buff { display: inline-block; max-width: 100%; margin-top: 3px; font-size: .75rem; font-weight: 700; border: 2px solid; border-radius: 999px; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
@@ -514,10 +516,19 @@ function thumbnail(creature) {
   return c;
 }
 
+// After a live battle its creatures sleep for a minute (server: rooms.SLEEP_SECONDS) and can't be picked.
+const sleepLeft = c => Math.max(0, Math.ceil((Date.parse((c && c.battle && c.battle.sleepUntil) || "") - Date.now()) / 1000)) || 0;
+const byId = id => farm.find(c => c.id === id);
+
 function renderPicks() {
   const locked = LIVE && LIVE.view && LIVE.view.locked && LIVE.view.locked.you;
+  if (!locked) picks = picks.filter(id => !sleepLeft(byId(id)));
   for (const tile of $("farm").children) {
-    tile.disabled = !!locked;
+    const nap = sleepLeft(byId(tile.dataset.id));
+    tile.disabled = !!locked || nap > 0;
+    tile.classList.toggle("asleep", nap > 0);
+    tile.querySelector(".nap").hidden = !nap;
+    tile.querySelector(".nap").textContent = `💤 sleeping ${fmt(nap)}`;
     const i = picks.indexOf(tile.dataset.id);
     tile.setAttribute("aria-pressed", String(i >= 0));
     tile.querySelector(".order").hidden = i < 0;
@@ -533,13 +544,16 @@ function buildFarm() {
     const tile = document.createElement("button");
     tile.type = "button"; tile.className = "tile"; tile.dataset.id = c.id;
     const name = document.createElement("b"), stats = document.createElement("small"), order = document.createElement("span");
+    const nap = document.createElement("small");
+    nap.className = "nap"; nap.hidden = true;
     name.textContent = (c.settings && c.settings.name) || "?";
     const wins = winsOf(c);
     stats.textContent = `size ${c.battle.size} · attack ${c.battle.baseAttack}` + (wins ? ` · ${wins} win${wins > 1 ? "s" : ""}` : "");
     if (wins > CROWN_WINS) name.textContent = "👑 " + name.textContent;
     order.className = "order"; order.hidden = true;
-    tile.append(order, thumbnail(c), name, stats);
+    tile.append(order, thumbnail(c), name, stats, nap);
     tile.onclick = () => {
+      if (sleepLeft(c)) return;
       const i = picks.indexOf(c.id);
       if (i >= 0) picks.splice(i, 1);
       else if (picks.length < 3) picks.push(c.id);
@@ -549,6 +563,8 @@ function buildFarm() {
   }));
   renderPicks();
 }
+
+setInterval(() => { if (!$("pick").hidden && farm.some(sleepLeft)) renderPicks(); }, 1000);   // count down, wake up
 
 function showPicker() {
   LOG = null;
@@ -628,7 +644,9 @@ async function startPractice(team, buff) {
 }
 $("fight").onclick = () => LIVE ? send("lock", { team: picks.slice() }) : practiceCards(picks.slice());
 $("randomTeam").onclick = () => {
-  picks = [...farm].sort(() => Math.random() - .5).slice(0, 3).map(c => c.id);
+  const ready = farm.filter(c => !sleepLeft(c));
+  if (ready.length < 3) { $("pickStatus").textContent = "Not enough creatures are awake yet."; return; }
+  picks = ready.sort(() => Math.random() - .5).slice(0, 3).map(c => c.id);
   renderPicks();
   if (LIVE) send("lock", { team: picks.slice() }); else practiceCards(picks.slice());
 };
