@@ -1,4 +1,4 @@
-"""Battle engine (CREATURE_SPEC.md, "Battle log"). Pure: no database, no clock, no network.
+"""Battle engine (docs/CREATURE_SPEC.md, "Battle log"). Pure: no database, no clock, no network.
 
 run_battle(teamA, teamB, seed, buffs) -> log. The same teams and seed always give the same log, so the
 server runs it once and both clients only play the log back. The server adds battleId, startAt,
@@ -21,7 +21,7 @@ END_GAP = 100        # after the last faint, the end event (victory moment) this
 # Every creature has the same hp and attacks at the same speed. Size changes the odds instead:
 # big creatures crit more often, small creatures dodge more often. The dodge chance is derived from the
 # crit chance so that for ANY two sizes, both sides expect the same damage per attack (big hits harder
-# on average when it lands, small is harder to land on). Tuned with battle_sim.py.
+# on average when it lands, small is harder to land on). Tuned with scripts/battle_sim.py.
 SIZE_RANGE = (15, 85)        # most drawings land in here; sizes outside count as the nearest end
 HP = 150
 ATTACK_SECONDS = 1.3         # time between attacks, same for everyone
@@ -40,7 +40,7 @@ FIRST_ATTACK = (0.3, 0.6)    # first attack after READY + this many intervals, a
 #   hp: max hp   crit / dodge: chance, added to the size-based chance (each kept within 0..MAX_CHANCE)
 #   damage: hits do this much more (-0.04 = 4% less)   speed: attacks this much more often (-0.04 = 4% slower)
 #   ambush / fumble: the team's first attack of the battle always lands and crits / always misses
-# Battles are long, so small edges add up: +10 hp alone wins 67%. Tuned with battle_sim.py so every buff wins
+# Battles are long, so small edges add up: +10 hp alone wins 67%. Tuned with scripts/battle_sim.py so every buff wins
 # about 60% against no card and every debuff about 36% (the mirror image, since about 4% are draws).
 BUFFS = {
     "tough":    {"good": True,  "name": "Tough Hide",   "hp": 6},

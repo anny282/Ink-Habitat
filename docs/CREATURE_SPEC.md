@@ -213,11 +213,11 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 
 | Field | Who fills it | Meaning | Range |
 |---|---|---|---|
-| `size` | **server** | How big the creature is, for battles. `5 + 95 * (0.5 * drawn + 0.3 * bulk + 0.2 * ink)`, each part 0 to 1: **drawn** is `canvasSize` (20 to 70 maps to 0 to 1; unknown counts as 45), **bulk** is the body outline's area over the creature's box (0.05 to 0.5), **ink** is total stroke length times width over the box (0.08 to 0.25). The exact numbers live in `server.py` (`measure_size`). Whole number. | 5 to 100 |
+| `size` | **server** | How big the creature is, for battles. `5 + 95 * (0.5 * drawn + 0.3 * bulk + 0.2 * ink)`, each part 0 to 1: **drawn** is `canvasSize` (20 to 70 maps to 0 to 1; unknown counts as 45), **bulk** is the body outline's area over the creature's box (0.05 to 0.5), **ink** is total stroke length times width over the box (0.08 to 0.25). The exact numbers live in `backend/creatures.py` (`measure_size`). Whole number. | 5 to 100 |
 | `canvasSize` | **drawing tool** (sent as `battle.size`) | How big the drawing was on the canvas **before** normalizing: `100 * sqrt(inkW * inkH) / 500`, where `inkW` x `inkH` is the bounding box of all strokes in the 500 x 500 logical canvas. A doodle in the corner is small, a drawing that fills the page is near 100. `null` if unknown (older creatures). | 5 to 100 |
 | `baseAttack` | **AI-filled** | How strong its attacks look: claws, teeth, horns, spikes and a fierce name push it up, round soft shapes push it down. Whole number. | 1 to 10 |
 | `wins` | **server** | Battles this creature was on the winning team for. Starts at 0, only the server increments it. More than 5 wins shows a crown. | 0 and up |
-| `sleepUntil` | **server** | ISO time until which the creature sleeps after a live battle (1 minute, `SLEEP_SECONDS` in `rooms.py`). While asleep it can't be picked for any battle, and the farm shows it standing still with a "sleeping" tag. `null` when awake or never battled. | ISO date or `null` |
+| `sleepUntil` | **server** | ISO time until which the creature sleeps after a live battle (1 minute, `SLEEP_SECONDS` in `backend/rooms.py`). While asleep it can't be picked for any battle, and the farm shows it standing still with a "sleeping" tag. `null` when awake or never battled. | ISO date or `null` |
 
 `size` and `baseAttack` are raw stats. The battle engine turns them into fighting numbers (hp, damage, attack speed) with formulas that live in the engine code, so they can be tuned without changing saved creatures. The intent: every creature has the same hp and attack speed. Bigger creatures land critical hits more often; smaller creatures dodge more often. The two are balanced so that no size has an edge, only a different style. The replay draws each fighter at a size that grows with `size`, and shows a dodge for a `miss`.
 
@@ -260,7 +260,7 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 - **Person B (world side):** rigging (`parent`, `pivot`, `z`), `locomotion` and `idles` playback, wander loop, name label, click and speak behavior (including applying `playbackRate`), and the clamp table. In v3, also the crown for creatures with `battle.wins > 5`.
 - **Person A (battle side, v3):** accounts and database, `drawnBy`, friends, the battle engine and battle log, battle rooms, prize transfer and `wins`, and (unless Person B takes it) the 2D replay scene.
 
-`example_creature.json` is a hand-written creature in this format for Person B to build against. Person A should make the drawing tool output the same shape.
+`assets/example_creature.json` is a hand-written creature in this format for Person B to build against. Person A should make the drawing tool output the same shape.
 
 ## Battle log (v3)
 
@@ -269,7 +269,7 @@ The battle engine is a **pure function**: `run_battle(teamA, teamB, seed, buffs)
 ### Battle rules (summary)
 
 - Each side brings **exactly 3** creatures, in the order they picked them. A player with fewer than 3 creatures can't battle yet. The engine rejects any team that isn't exactly 3. One creature per side is on the field at a time.
-- After locking in their team, each player flips **one of 3 face-down buff cards** dealt by the server: 2 buffs and 1 debuff, shuffled. The card changes only that player's team (for example +6 hp, +5% crit chance, or attacks 4% slower). If the pick timer runs out, a random card is picked. The card list and numbers live in `BUFFS` in `battle.py`.
+- After locking in their team, each player flips **one of 3 face-down buff cards** dealt by the server: 2 buffs and 1 debuff, shuffled. The card changes only that player's team (for example +6 hp, +5% crit chance, or attacks 4% slower). If the pick timer runs out, a random card is picked. The card list and numbers live in `BUFFS` in `backend/battle.py`.
 - Both creatures attack on their own timers, at the same time. Each attack can hit, miss or crit (seeded randomness).
 - When a creature faints, that side's next creature enters. The survivor stays in **with the hp it has left**.
 - The battle ends when one side has no creatures left (`knockout`), when a player disconnects (`forfeit`), or after 2 minutes (120 seconds, `timeout`). On timeout, the side with the larger share of its total hp left wins; equal shares are a `draw`.

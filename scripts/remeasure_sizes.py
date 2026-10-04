@@ -1,7 +1,7 @@
-"""Re-measure battle.size for every saved creature with the current formula (server.measure_size).
+"""Re-measure battle.size for every saved creature with the current formula (backend.creatures.measure_size).
 
-    python remeasure_sizes.py          # show what would change, write nothing
-    python remeasure_sizes.py --apply  # save the new sizes
+    python -m scripts.remeasure_sizes          # show what would change, write nothing
+    python -m scripts.remeasure_sizes --apply  # save the new sizes
 
 How big each creature was drawn is only known for creatures saved with battle.canvasSize, or from before
 that field existed with a size other than the default 40 (that was the drawing tool's measure). For the
@@ -10,8 +10,8 @@ rest, the middle value is used and the size comes from the drawing's shape.
 import json
 import sys
 
-import db
-import server  # loads .env
+from backend import db
+from backend.creatures import measure_size
 
 apply = "--apply" in sys.argv
 with db.transaction() as cur:
@@ -21,7 +21,7 @@ with db.transaction() as cur:
         creature = db.with_defaults(json.loads(row["data"]))
         battle = creature["battle"]
         canvas = battle["canvasSize"] if "canvasSize" in battle else (battle["size"] if battle["size"] != 40 else None)
-        new = server.measure_size(creature, canvas)
+        new = measure_size(creature, canvas)
         print(f'{row["username"]:<12} {creature["settings"]["name"]:<14} size {battle["size"]:>3} -> {new:>3}'
               f'   (drawn size {"unknown" if canvas is None else canvas})')
         if apply:

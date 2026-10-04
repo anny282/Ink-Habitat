@@ -24,9 +24,7 @@ from http.cookies import CookieError, SimpleCookie
 
 import socketio
 
-import auth
-import battle
-import db
+from . import auth, battle, db
 
 INVITE_SECONDS = 60
 PICK_SECONDS = 60

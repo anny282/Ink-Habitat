@@ -1,13 +1,13 @@
-"""Balance simulator for battle.py. Run with: python battle_sim.py [battles per test]
+"""Balance simulator for backend/battle.py. Run with: python -m scripts.battle_sim [battles per test]
 
-Fights many seeded battles and prints win rates, so the numbers at the top of battle.py
+Fights many seeded battles and prints win rates, so the numbers at the top of backend/battle.py
 can be tuned until small and big creatures win about equally.
 """
 import random
 import sys
 from collections import Counter
 
-import battle
+from backend import battle
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
 rng = random.Random(2026)

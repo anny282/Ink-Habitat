@@ -1,8 +1,8 @@
-"""Checks for the battle engine. Run with: python test_battle.py"""
+"""Checks for the battle engine. Run with: python -m tests.test_battle"""
 import json
 import random
 
-import battle
+from backend import battle
 
 
 def creature(cid, size, base_attack, name=None):

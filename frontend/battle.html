@@ -171,7 +171,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
 <script src="/live.js"></script>
 <script>
-// Plays a battle log (CREATURE_SPEC.md, "Battle log"). The replay never simulates: everything on screen is a
+// Plays a battle log (docs/CREATURE_SPEC.md, "Battle log"). The replay never simulates: everything on screen is a
 // function of the playback time t and the log's events, so pause, restart and speed changes are free.
 const STAGE_W = 1600, STAGE_H = 900, GROUND = 660, VISIBLE_W = 1240;   // the fight happens in the middle 1240
 const HOME = { left: 480, right: 1120 }, EDGE = { left: -260, right: 1860 };
@@ -514,7 +514,7 @@ $("again").onclick = () => showPicker();
 // ---------- loading ----------
 // /battle.html              the battle home: invite an online friend, or practice
 // /battle.html?practice     pick 3 from your farm (or Random) and a buff card, against 3 random ones
-// /battle.html?room=<id>    a live battle with a friend (server: rooms.py)
+// /battle.html?room=<id>    a live battle with a friend (server: backend/rooms.py)
 // /battle.html?sample       plays frontend/sample-battle.json (a hand-written log);
 //                           add &side=b to watch from side b, &at=12.5 to open paused at that second
 function showNotice(text) {
@@ -679,7 +679,7 @@ $("randomTeam").onclick = () => {
   if (LIVE) send("lock", { team: picks.slice() }); else practiceCards(picks.slice());
 };
 
-// ---------- live battle with a friend: /battle.html?room=<battleId> (server: rooms.py) ----------
+// ---------- live battle with a friend: /battle.html?room=<battleId> (server: backend/rooms.py) ----------
 // The server sends this player's whole view after every change ("battle" event); the page just shows it.
 let LIVE = null;   // { id, socket, view, offset, logKey, panelKey, cardsFor, revealed, holdUntil, hold }
 const liveTime = () => (Date.now() + LIVE.offset - LIVE.view.startAt) / 1000;

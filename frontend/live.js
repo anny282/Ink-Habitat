@@ -1,6 +1,6 @@
 // Live presence and battle pop-ups for any page that includes this after the Socket.IO client:
 // "<friend> wants to battle!" with Accept / No thanks, and "You're in a battle" with a way back to it.
-// The battle itself runs on /battle.html?room=<id> (server side: rooms.py).
+// The battle itself runs on /battle.html?room=<id> (server side: backend/rooms.py).
 (() => {
   if (!window.io) return;
   const socket = io({ transports: ["websocket", "polling"] });

@@ -136,9 +136,21 @@ Only use `HOST=0.0.0.0` on a network you trust: anyone on that Wi-Fi can open th
 
 ## Project layout
 
-Server (Python, run with `python server.py`):
+```
+server.py      start the server: python server.py
+backend/       the server's code (Python)
+frontend/      the web pages, served as they are
+scripts/       tools you run by hand
+tests/         checks for the battle engine
+assets/        the starter creature and sample creatures
+docs/          the creature and battle log format
+data/          made by the server on this laptop (not in Git)
+```
 
-- `server.py` — the web server: accounts, creatures, friends and practice battle API, and the login redirect. Serves only the files in `frontend/`, so `.env` and saved data are never exposed.
+`backend/` (importing anything from it loads `.env` first):
+
+- `app.py` — the web app: accounts, creatures, friends and practice battle API, voice clips, and the login redirect. Serves only the files in `frontend/`, so `.env` and saved data are never exposed.
+- `creatures.py` — building a new creature: checking the drawing, measuring its battle size, and its random voice and personality.
 - `auth.py` — passwords and signed login cookies.
 - `db.py` — every TiDB query: users, creatures and their voice clips, friends, battles.
 - `rooms.py` — live battles over Socket.IO (invites, picks, buff cards, prize, after-battle sleep) and who is online.
@@ -147,7 +159,7 @@ Server (Python, run with `python server.py`):
 - `gemini.py` — asks Gemini for part roles, animations and attack (falls back to simple rules without a key).
 - `elevenlabs.py` — makes each creature's voice clip.
 
-Pages (`frontend/`):
+`frontend/`:
 
 - `login.html` — sign up and log in.
 - `world.html` — your farm: view, animate and manage creatures across Grasslands, Desert and Ocean; `?visit=<friend id>` shows a friend's farm.
@@ -157,20 +169,20 @@ Pages (`frontend/`):
 - `live.js` — online status and battle invite pop-ups on every page.
 - `scenes/` — the three scenes' shapes and scenery.
 
-Data and docs:
+Other folders:
 
-- `CREATURE_SPEC.md` — creature JSON format (v3) and the battle log format.
-- `example_creature.json` — starter creature every new account gets.
+- `assets/example_creature.json` — starter creature every new account gets.
+- `assets/test-creatures/` — sample creatures for `scripts/migrate_json.py`.
+- `docs/CREATURE_SPEC.md` — creature JSON format (v3) and the battle log format.
 - `data/audio/` — where voice clips were saved before they moved into TiDB. New clips are stored in TiDB, so every laptop's server can play them.
-- `test-creatures/` — sample creatures for `migrate_json.py`.
 
 Tools (run from the project folder with the virtual environment active):
 
-- `python test_battle.py` — checks for the battle engine.
-- `python battle_sim.py` — fights thousands of battles and prints win rates, to tune `battle.py` (sizes, attack and every buff card).
-- `python migrate_json.py <username>` — moves creatures from the old JSON files into an account.
-- `python upload_audio.py` — copies the voice clips in this laptop's `data/audio/` into TiDB. Run it once on each laptop that ran the server before clips moved into TiDB; it's safe to run again.
-- `python remeasure_sizes.py` — re-measures every creature's battle size with the current formula (add `--apply` to save).
+- `python -m tests.test_battle` — checks for the battle engine.
+- `python -m scripts.battle_sim` — fights thousands of battles and prints win rates, to tune `backend/battle.py` (sizes, attack and every buff card).
+- `python -m scripts.migrate_json <username>` — moves creatures from the old JSON files into an account.
+- `python -m scripts.upload_audio` — copies the voice clips in this laptop's `data/audio/` into TiDB. Run it once on each laptop that ran the server before clips moved into TiDB; it's safe to run again.
+- `python -m scripts.remeasure_sizes` — re-measures every creature's battle size with the current formula (add `--apply` to save).
 
 When a creature is saved, the server rigs it, asks Gemini for part roles and animations, and makes its voice clip with ElevenLabs. Nearby creatures greet when they come within range: they face each other, play an idle, say their sound when available, pause, then wander off. Individual and world-wide cooldowns keep greetings occasional, and pathing keeps their outlines apart.
 
@@ -179,8 +191,8 @@ When a creature is saved, the server rigs it, asks Gemini for part roles and ani
 - If `python3` is not found, try `python`.
 - If the page is blank, check the terminal for a server error and refresh the browser.
 - If you change a page and do not see the update, hard refresh (`Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Windows/Linux).
-- If a creature is silent and the terminal shows `GET /audio/... 404`, its clip was made on another laptop before clips moved into TiDB: run `python upload_audio.py` on that laptop.
+- If a creature is silent and the terminal shows `GET /audio/... 404`, its clip was made on another laptop before clips moved into TiDB: run `python -m scripts.upload_audio` on that laptop.
 - If startup says "TiDB is not configured", check that `TIDB_HOST`, `TIDB_USER`, and `TIDB_PASSWORD` in `.env` are filled in correctly.
 - If the server cannot connect to TiDB, confirm the password and cluster details with the person who provided them, and check your internet connection.
 - If Python reports `ModuleNotFoundError` for a package such as `socketio`, activate `venv` and run `python -m pip install -r requirements.txt` from the project folder, then restart the server.
-- To move creatures from the old JSON files into your account: sign up first, then run `python migrate_json.py <your username>`.
+- To move creatures from the old JSON files into your account: sign up first, then run `python -m scripts.migrate_json <your username>`.

@@ -214,7 +214,7 @@ def call_gemini(prompt):
     raise RuntimeError("no Gemini model answered (" + ", ".join(errors) + ")")
 
 
-# ---------- validation and clamping (clamp table in CREATURE_SPEC.md) ----------
+# ---------- validation and clamping (clamp table in docs/CREATURE_SPEC.md) ----------
 
 def num(v, lo, hi, default):
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):

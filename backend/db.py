@@ -149,7 +149,7 @@ def user_by_id(user_id):
 # ---------- creatures ----------
 
 def with_defaults(creature):
-    """Upgrade v2 creatures on load (CREATURE_SPEC.md, v3 changes)."""
+    """Upgrade v2 creatures on load (docs/CREATURE_SPEC.md, v3 changes)."""
     creature.setdefault("drawnBy", None)
     battle = creature.get("battle") if isinstance(creature.get("battle"), dict) else {}
     creature["battle"] = {"size": 40, "baseAttack": 5, "wins": 0, "sleepUntil": None, **battle}
@@ -180,7 +180,7 @@ def get_audio(creature_id):
 
 
 def add_audio(creature_id, mp3):
-    """Stores a clip for an existing creature that has none yet (upload_audio.py). Returns True if stored."""
+    """Stores a clip for an existing creature that has none yet (scripts/upload_audio.py). Returns True if stored."""
     with transaction() as cur:
         cur.execute("SELECT 1 FROM creatures WHERE id = %s", (creature_id,))
         if not cur.fetchone():

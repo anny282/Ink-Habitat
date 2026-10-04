@@ -2,13 +2,13 @@
 so every server can play them. Clips already in TiDB, and clips of deleted creatures, are skipped,
 so running it twice is safe. Each laptop that ever ran the server can run it once.
 
-    python upload_audio.py
+    python -m scripts.upload_audio
 """
-import db
-import server  # loads .env
+from backend import db
+from backend.app import AUDIO
 
 stored = skipped = 0
-for path in sorted(server.AUDIO.glob("*.mp3")):
+for path in sorted(AUDIO.glob("*.mp3")):
     if db.add_audio(path.stem, path.read_bytes()):
         stored += 1
     else:
