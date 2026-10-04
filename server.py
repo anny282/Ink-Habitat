@@ -179,6 +179,7 @@ def give_starter_creature(user):
     example = BASE / "example_creature.json"
     if example.exists():
         creature = assign_id(json.loads(example.read_text(encoding="utf-8")))
+        creature["scene"] = "grasslands"
         db.save_creature(user["id"], db.with_defaults(creature))
 
 
@@ -240,17 +241,17 @@ def create_creature(creature: dict = Body(...), user=Depends(current_user)):
 
 
 @app.patch("/api/creatures/{creature_id}/scene")
-def move_creature(creature_id: str, payload: dict = Body(...)):
+def move_creature(creature_id: str, payload: dict = Body(...), user=Depends(current_user)):
     """Place a creature in one scene, or remove it from the world with null."""
-    path = path_for(creature_id)
-    if not path.exists():
-        raise HTTPException(404, "Creature not found")
+    if not ID_RE.fullmatch(creature_id):
+        raise HTTPException(400, "Invalid creature id")
     scene = payload.get("scene")
     if scene is not None and (not isinstance(scene, str) or scene not in SCENES):
         raise HTTPException(400, "scene must be grasslands, desert, ocean, or null")
-    creature = json.loads(path.read_text(encoding="utf-8"))
-    creature["scene"] = scene
-    return write(creature)
+    creature = db.set_creature_scene(user["id"], creature_id, scene)
+    if not creature:
+        raise HTTPException(404, "Creature not found")
+    return creature
 
 
 @app.delete("/api/creatures/{creature_id}")
@@ -291,6 +292,26 @@ def remove_friend(friend_id: str, user=Depends(current_user)):
     if not db.remove_friend(user["id"], friend_id):
         raise HTTPException(404, "Friend not found")
     return {"removed": friend_id}
+
+
+@app.get("/api/friends/{friend_id}/farm")
+def view_friend_farm(friend_id: str, user=Depends(current_user)):
+    """Return only scene-placed, viewable creature fields for an existing friend."""
+    if not ID_RE.fullmatch(friend_id) or not db.are_friends(user["id"], friend_id):
+        raise HTTPException(404, "Friend not found")
+    friend = db.user_by_id(friend_id)
+    if not friend:
+        raise HTTPException(404, "Friend not found")
+    visible = []
+    for creature in db.get_creatures(friend_id):
+        scene = creature.get("scene", "grasslands")  # older starter creatures predate scene assignments
+        if scene not in SCENES:
+            continue
+        shared = {key: creature[key] for key in ("id", "bounds", "parts", "locomotion", "idles", "personality") if key in creature}
+        shared["scene"] = scene
+        visible.append(shared)
+        visible[-1]["settings"] = {"name": (creature.get("settings") or {}).get("name", "Creature")}
+    return {"username": friend["username"], "creatures": visible}
 
 
 # ---------- practice battle (one laptop: your creatures against your creatures) ----------

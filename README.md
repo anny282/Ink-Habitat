@@ -104,7 +104,7 @@ For example your own cluster for testing, or if the shared one is replaced:
 
 A new cluster starts empty: accounts, friends and creatures from the old one don't come with it, and people on different clusters can't add each other or battle. To change the shared cluster for the whole team, update the four values in `.env.example`, commit that (never the password), and send everyone the new password privately.
 
-After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
+After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. On the Friends page, choose **Visit** to view a friend's creatures in their scenes; creatures taken out of the world are not shown. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
 
 Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
 

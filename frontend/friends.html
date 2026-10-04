@@ -105,8 +105,8 @@ function render(friends) {
     visit.className = "btn visit";
     visit.type = "button";
     visit.textContent = "Visit";
-    visit.title = "Friend farm visits are coming soon";
-    visit.onclick = () => say("Visiting friends’ farms is coming soon.");
+    visit.title = `View ${friend.username}'s creatures by scene`;
+    visit.onclick = () => location.assign(`/world.html?visit=${encodeURIComponent(friend.id)}`);
     const remove = document.createElement("button");
     remove.className = "btn";
     remove.type = "button";
