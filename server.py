@@ -311,6 +311,7 @@ def view_friend_farm(friend_id: str, user=Depends(current_user)):
         shared["scene"] = scene
         visible.append(shared)
         visible[-1]["settings"] = {"name": (creature.get("settings") or {}).get("name", "Creature")}
+        visible[-1]["battle"] = {"sleepUntil": creature["battle"].get("sleepUntil")}   # so naps show on visits too
     return {"username": friend["username"], "creatures": visible}
 
 

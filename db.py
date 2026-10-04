@@ -169,20 +169,6 @@ def get_creatures(owner_id):
     return [with_defaults(json.loads(r["data"])) for r in rows]
 
 
-def set_creature_scene(owner_id, creature_id, scene):
-    """Update a creature's scene only when it belongs to this account."""
-    with transaction() as cur:
-        cur.execute("SELECT data FROM creatures WHERE id = %s AND owner_id = %s FOR UPDATE", (creature_id, owner_id))
-        row = cur.fetchone()
-        if not row:
-            return None
-        creature = json.loads(row["data"])
-        creature["scene"] = scene
-        cur.execute("UPDATE creatures SET data = %s WHERE id = %s AND owner_id = %s",
-                    (json.dumps(creature), creature_id, owner_id))
-    return creature
-
-
 def count_creatures(owner_id):
     with transaction() as cur:
         cur.execute("SELECT COUNT(*) AS n FROM creatures WHERE owner_id = %s", (owner_id,))
