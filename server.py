@@ -27,6 +27,7 @@ FRONTEND = BASE / "frontend"
 AUDIO = BASE / "data" / "audio"
 AUDIO.mkdir(parents=True, exist_ok=True)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SCENES = {"grasslands", "desert", "ocean"}
 PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html", "/friends.html", "/battle.html"}
 app = FastAPI(title="StromHacks Creature World")
 
@@ -226,6 +227,7 @@ def list_creatures(user=Depends(current_user)):
 @app.post("/api/creatures")
 def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     creature = validate(creature)
+    creature["scene"] = "grasslands"
     canvas = canvas_size(creature.get("battle"))
     creature["battle"] = {"size": measure_size(creature, canvas), "canvasSize": canvas,
                           "wins": 0}  # wins: only the server counts them
@@ -235,6 +237,20 @@ def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     creature = assign_id(fill_random(creature))
     creature["drawnBy"] = {"userId": user["id"], "name": user["username"]}
     return db.save_creature(user["id"], elevenlabs.generate(creature, AUDIO, VOICE_IDS))
+
+
+@app.patch("/api/creatures/{creature_id}/scene")
+def move_creature(creature_id: str, payload: dict = Body(...)):
+    """Place a creature in one scene, or remove it from the world with null."""
+    path = path_for(creature_id)
+    if not path.exists():
+        raise HTTPException(404, "Creature not found")
+    scene = payload.get("scene")
+    if scene is not None and (not isinstance(scene, str) or scene not in SCENES):
+        raise HTTPException(400, "scene must be grasslands, desert, ocean, or null")
+    creature = json.loads(path.read_text(encoding="utf-8"))
+    creature["scene"] = scene
+    return write(creature)
 
 
 @app.delete("/api/creatures/{creature_id}")

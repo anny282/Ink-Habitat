@@ -83,6 +83,7 @@ A new cluster starts empty: accounts, friends and creatures from the old one don
 python server.py
 ```
 
+Open [http://localhost:8000](http://localhost:8000). The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move each creature to one scene or take it out of the world. These scene assignments are saved locally and do not delete the creature. Stop the server with `Ctrl+C`.
 Open [http://localhost:8000](http://localhost:8000), sign up, and you land on your own farm (with one starter creature). The world page links to the drawing page, and a submitted creature is saved to your account and appears in the world. Each account only sees its own creatures. Stop the server with `Ctrl+C`.
 
 Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
@@ -110,17 +111,8 @@ Only use `HOST=0.0.0.0` on a network you trust: anyone on that Wi-Fi can open th
 - `frontend/battle.html` — live battles with a friend (`?room=<id>`: waiting room, secret picks, synced replay, prize pick), practice battles and the replay. Pick 3 creatures from your farm (or Random) to fight 3 random ones; you need at least 3. `?sample` plays the hand-written log in `frontend/sample-battle.json`; `&at=12.5` opens paused at that second; `&side=b` watches from the other side.
 - `frontend/live.js` — battle invite pop-ups on the farm and friends pages.
 - `frontend/draw-creature.html` — draw a creature and submit it to the server.
-- `frontend/world.html` — view, animate, and manage saved creatures.
-- `server.py` — local web server, accounts, and creature API.
-- `db.py` — TiDB tables (`users`, `creatures`, `friendships`, `battles`) and queries.
-- `auth.py` — password hashing and signed login cookies.
-- `gemini.py`, `elevenlabs.py` — part roles and animations, and each creature's voice clip.
-- `remeasure_sizes.py` — re-measures `battle.size` for every saved creature after the size formula changes: `python remeasure_sizes.py` shows the changes, `--apply` saves them.
-- `migrate_json.py` — moves creatures saved as JSON files (before TiDB) into an account.
-- `rooms.py` — live battles over Socket.IO: invites, one room per battle, secret picks, the shared replay start, disconnects and forfeits, the prize pick, and the end-of-battle transaction. Battle state is kept in memory, so run a single server process.
-- `battle.py` — battle engine: `run_battle(teamA, teamB, seed)` turns two teams of 3 into a battle log (spec, "Battle log"). Same teams and seed, same log.
-- `battle_sim.py` — balance simulator for the engine's numbers: `python battle_sim.py`.
-- `test_battle.py` — engine checks: `python test_battle.py`.
+- `frontend/world.html` — view, animate, and manage saved creatures across Grasslands, Desert, and Ocean.
+- `server.py` — local web server and creature storage API.
 - `rig.py` — connects strokes with parent links and swing pivots when a creature is saved.
 - `data/audio/` — created automatically; stores each creature's voice clip.
 - `CREATURE_SPEC.md` — creature JSON format (v3).

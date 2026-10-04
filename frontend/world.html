@@ -4,20 +4,34 @@
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#cfe8d5;font-family:system-ui,sans-serif}
 canvas{display:block}
-#ui{position:fixed;top:10px;left:10px;display:flex;gap:8px}
+#ui{position:fixed;top:10px;left:10px;display:flex;gap:8px;align-items:center}
 #ui a,#ui button{background:#fff;border:0;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;text-decoration:none;cursor:pointer;box-shadow:0 2px 6px #0003}
 #side{position:fixed;top:0;right:0;bottom:0;width:280px;background:#fffe;padding:12px;overflow:auto;transform:translateX(100%);transition:transform .2s;box-shadow:-4px 0 12px #0002;font-size:14px}
 #ui #who{background:#fff;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;box-shadow:0 2px 6px #0003}
 #side.open{transform:none}#side h3{margin:4px 0 10px}
-.row{display:flex;align-items:center;gap:10px;margin-bottom:8px;background:#f4f4f0;border-radius:10px;padding:6px}
-.row canvas{background:#e6f0d8;border-radius:8px}.row span{flex:1;font-weight:600}
+.row{display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:6px;margin-bottom:8px;background:#f4f4f0;border-radius:10px;padding:6px}
+.row canvas{background:#e6f0d8;border-radius:8px;width:48px;height:48px;grid-row:1 / span 2}.row span{font-weight:600;grid-column:2}
 .row button{border:0;background:#e8685a;color:#fff;border-radius:8px;padding:5px 9px;cursor:pointer}
-.dev{margin-top:16px;font-size:12px;border-top:1px solid #0002;padding-top:10px;display:grid;gap:6px}
+.row small{grid-column:2;color:#666;font-size:12px}
+.row .acts{grid-column:3;grid-row:1 / span 2;display:flex;flex-direction:column;gap:4px}
+.row .acts button{width:100%;white-space:nowrap}
+.row .acts .place{background:#5a8f5a}.row .acts .out{background:#8a8a8a}
+#dots{position:fixed;left:14px;top:50%;transform:translateY(-50%);display:grid;gap:12px}
+#dots button{width:14px;height:14px;border-radius:50%;border:2px solid #fff;background:#fff4;padding:0;cursor:pointer;box-shadow:0 1px 4px #0004}
+#dots button.on{background:#fff}
+#sceneName{position:fixed;top:14px;left:50%;transform:translateX(-50%);padding:6px 18px;border-radius:20px;background:#fff9;font:600 18px system-ui;color:#333;opacity:0;pointer-events:none}
+#sceneName.show{animation:fadeTitle 2.2s ease}
+@keyframes fadeTitle{0%{opacity:0;transform:translate(-50%,10px)}20%,70%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
+#hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);font:600 13px system-ui;color:#fff;text-shadow:0 1px 4px #0006;transition:opacity .4s;pointer-events:none;animation:bob 1.6s infinite}
+@keyframes bob{50%{transform:translate(-50%,5px)}}
+@media(max-width:620px){#ui{right:8px;flex-wrap:wrap;max-width:calc(100vw - 16px)}#ui a,#ui button{padding:7px 10px;font-size:12px}}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><a href="/friends.html">Friends</a><a href="/battle.html">Practice battle</a><span id="who" hidden></span><button id="logout">Log out</button></div>
 <div id="spaceNotice" hidden style="position:fixed;top:58px;left:10px;max-width:340px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There is no safe space for another creature. Delete one from the Creatures list to make room.</div>
-<div id="side"><h3>Creatures</h3><div id="list"></div><div class="dev"><b>Dev tools</b><button id="ex">Add example</button><label>Load JSON <input type="file" id="f" accept=".json"></label></div></div>
+<div id="side"><h3>Manage Creatures</h3><div style="font-size:12px;color:#666;margin:-4px 0 12px">Each creature lives in one scene. Scroll to a scene, then put creatures in it or take them out. Delete removes a creature for good.</div><div id="list"></div></div>
+<div id="dots" aria-label="Scenes"></div><div id="sceneName"></div><div id="hint">Scroll down for more scenes &darr;</div>
+<script src="scenes/scenes.js"></script><script src="scenes/grasslands.js"></script><script src="scenes/desert.js"></script><script src="scenes/ocean.js"></script>
 <script>
 // ---- Example creature (same as example_creature.json). Replace with fetch('creature.json') in your repo. ----
 const EXAMPLE={version:2,id:"example",settings:{name:"Sir Noodle"},bounds:{minX:-60,minY:-75,maxX:100,maxY:85},
@@ -36,18 +50,18 @@ personality:{restSeconds:3,speakEverySeconds:30,speedPxPerSec:50}};
 
 // ---- helpers ----
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');let W,H;
-let VIEW=new DOMMatrix();
-function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;const k=Math.min(W/1960,H/1496)*.96;VIEW=new DOMMatrix().translate((W-1960*k)/2,(H-1496*k)/2).scale(k,k)}resize();addEventListener('resize',resize);
+let VIEW=new DOMMatrix(),VIEW0=VIEW; // VIEW0 = base view; VIEW = the view of the scene being drawn (shifted while scrolling)
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;const k=Math.min(W/1960,H/1496)*.96;VIEW0=VIEW=new DOMMatrix().translate((W-1960*k)/2,(H-1496*k)/2).scale(k,k)}resize();addEventListener('resize',resize);
 const TAU=Math.PI*2,rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b,d)=>typeof v==='number'&&isFinite(v)?Math.min(b,Math.max(a,v)):d; // world never trusts the JSON
 const wave=(w,t)=>w?Math.sin(TAU*(clamp(w.freq,.2,4,1)*t+clamp(w.phase,0,1,0))):0;
-// Island top face (world coords = pixels of the reference picture). Creatures stay inside this polygon.
-const ISLE=[[157,843],[918,515],[1730,820],[1178,1250],[765,1065],[682,1125]];
-function inPoly(x,y){let r=false;for(let i=0,j=ISLE.length-1;i<ISLE.length;j=i++){const a=ISLE[i],b=ISLE[j];
+// Scenes (islands) are defined in scenes/*.js and share one coordinate space so creatures keep their scale.
+let currentScene='grasslands';
+function inPoly(x,y,scene=currentScene){const ISLE=SCENES[scene].top;let r=false;for(let i=0,j=ISLE.length-1;i<ISLE.length;j=i++){const a=ISLE[i],b=ISLE[j];
   if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])r=!r}return r}
 const depY=y=>.85+.3*Math.min(1,Math.max(0,(y-515)/735));   // slightly bigger toward the front
 const depth=c=>depY(c.y);
-const walkable=(c,x,y)=>{const fy=y+c.b.maxY*depY(y);return[-35,0,35].every(o=>inPoly(x+o,fy))}; // feet must be on grass
+const walkable=(c,x,y)=>{const fy=y+c.b.maxY*depY(y);return[-35,0,35].every(o=>inPoly(x+o,fy,c.scene))};
 function minSeparation(a,b,dx,dy){
   const distance=Math.hypot(dx,dy*.6);
   const ux=distance?dx/distance:1,uy=distance?(dy*.6)/distance:0;
@@ -57,15 +71,16 @@ function minSeparation(a,b,dx,dy){
   return (Math.abs(ux)*(aw+bw)+Math.abs(uy)*.6*(ah+bh))*SEPARATION_SCALE+BODY_GAP;
 }
 function clearOfOthers(c,x,y){return creatures.every(o=>{
-  if(o===c)return true;
+  if(o===c||o.scene!==c.scene)return true;
   const dx=x-o.x,dy=y-o.y,distance=Math.hypot(dx,dy*.6);
   return distance>=minSeparation(c,o,dx,dy);
 })}
 function placeRandom(c){
   for(let i=0;i<5000;i++){
-    const x=rnd(157,1730),y=rnd(515,1250);
+    const x=rnd(100,1730),y=rnd(400,1250);
     if(!walkable(c,x,y))continue;
-    const clearance=creatures.length?Math.min(...creatures.map(o=>{
+    const others=creatures.filter(o=>o!==c&&o.scene===c.scene);
+    const clearance=others.length?Math.min(...others.map(o=>{
       const dx=x-o.x,dy=y-o.y;return Math.hypot(dx,dy*.6)-minSeparation(c,o,dx,dy)
     })):Infinity;
     if(clearance>=0){c.x=x;c.y=y;return true}
@@ -87,11 +102,11 @@ function spawn(data){
   const b=data.bounds||{};
   const c={d:data,parts,order:[...plist].sort((a,b)=>(a.z||0)-(b.z||0)),
     b:{minX:b.minX??-60,minY:b.minY??-60,maxX:b.maxX??60,maxY:b.maxY??60},
-    x:0,y:0,dir:1,state:'rest',t:0,idle:null,idleT:0,clock:rnd(0,50),
+    scene:data.scene===null?null:(SCENES[data.scene]?data.scene:'grasslands'),x:0,y:0,dir:1,state:'rest',t:0,idle:null,idleT:0,clock:rnd(0,50),
     rest:clamp(p.restSeconds,1,10,3),every:clamp(p.speakEverySeconds,15,90,30),speed:clamp(p.speedPxPerSec,20,150,50),
     speakT:rnd(6,16),bubble:'',bubbleT:0,react:0,greetReadyAt:worldTime+rnd(5,14)};
-  if(!placeRandom(c))return false;
-  creatures.push(c);startRest(c);refreshList();return true;
+  if(c.scene&&!placeRandom(c))return false;
+  creatures.push(c);if(c.scene)startRest(c);refreshList();return true;
 }
 function randomIdle(c){
   const idles=Array.isArray(c.d.idles)?c.d.idles.filter(Boolean):[];
@@ -126,11 +141,12 @@ function startGreeting(a,b){
 }
 function maybeStartEncounters(){
   if(worldTime<nextEncounterAt)return;
-  for(let i=0;i<creatures.length;i++){
-    const a=creatures[i];
+  const active=creatures.filter(c=>c.scene===currentScene);
+  for(let i=0;i<active.length;i++){
+    const a=active[i];
     if(!['rest','walk'].includes(a.state)||worldTime<a.greetReadyAt)continue;
-    for(let j=i+1;j<creatures.length;j++){
-      const b=creatures[j];
+    for(let j=i+1;j<active.length;j++){
+      const b=active[j];
       if(!['rest','walk'].includes(b.state)||worldTime<b.greetReadyAt)continue;
       const dx=b.x-a.x,dy=b.y-a.y,distance=Math.hypot(dx,dy*.6);
       if(distance<=minSeparation(a,b,dx,dy)+GREETING_BUFFER){startGreeting(a,b);nextEncounterAt=worldTime+rnd(2,4);return}
@@ -237,43 +253,33 @@ function drawCreature(c){
     ctx.fillStyle='#222';ctx.fillText(c.bubble,c.x,ly-52);
   }
 }
-const SIDES=[['#aa8f6d',[[157,848],[682,1125],[682,1215],[157,917]]],['#85684a',[[682,1125],[765,1065],[765,1158],[682,1215]]],
-  ['#aa8f6d',[[765,1065],[1178,1250],[1178,1345],[765,1158]]],['#85684a',[[1178,1250],[1730,820],[1730,905],[1178,1345]]]];
-const TUFTS=[[985,565],[312,824],[556,1004],[1032,886],[1334,872],[1492,848],[1116,1168],[760,700],[1200,700],[430,900]];
-function drawBackground(){
-  ctx.setTransform(1,0,0,1,0,0);
-  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#8ab3ff');g.addColorStop(1,'#cadcff');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  ctx.setTransform(VIEW);
-  const poly=(pts,col)=>{ctx.fillStyle=col;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()};
-  SIDES.forEach(q=>poly(q[1],q[0]));poly(ISLE,'#92b46e');
-  ctx.strokeStyle='#6f9457';ctx.lineWidth=4;ctx.lineCap='round';
-  TUFTS.forEach(([x,y])=>{ctx.beginPath();ctx.moveTo(x-8,y-6);ctx.lineTo(x-4,y);ctx.moveTo(x,y-9);ctx.lineTo(x+1,y);ctx.moveTo(x+9,y-6);ctx.lineTo(x+5,y);ctx.stroke()});
-}
+// ---- scene pager: scroll (wheel, swipe, arrow keys, or dots) between scenes ----
+let pos=0,target=0,lockUntil=0; // pos eases toward target; scene i is drawn (i-pos) screens away
+const dots=document.getElementById('dots'),title=document.getElementById('sceneName'),hint=document.getElementById('hint');
+function markDots(){[...dots.children].forEach((b,i)=>b.className=i===target?'on':'')}
+function showTitle(){title.textContent=SCENES[currentScene].icon+' '+SCENES[currentScene].label;title.classList.remove('show');void title.offsetWidth;title.classList.add('show')}
+function goTo(i){i=Math.max(0,Math.min(SCENE_ORDER.length-1,i));if(i===target)return;
+  target=i;currentScene=SCENE_ORDER[i];document.getElementById('spaceNotice').hidden=true;hint.style.opacity=0;
+  markDots();showTitle();refreshList()}
+SCENE_ORDER.forEach((id,i)=>{const b=document.createElement('button');b.title=SCENES[id].label;b.setAttribute('aria-label',SCENES[id].label);b.onclick=()=>goTo(i);dots.appendChild(b)});
+markDots();showTitle();
+cv.addEventListener('wheel',e=>{e.preventDefault();const now=performance.now();if(now<lockUntil||Math.abs(e.deltaY)<8)return;lockUntil=now+750;goTo(target+(e.deltaY>0?1:-1))},{passive:false});
+let touchY=null;
+cv.addEventListener('touchstart',e=>{touchY=e.touches[0].clientY},{passive:true});
+cv.addEventListener('touchend',e=>{if(touchY===null)return;const dy=touchY-e.changedTouches[0].clientY;touchY=null;if(Math.abs(dy)>50)goTo(target+(dy>0?1:-1))});
+addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='PageDown')goTo(target+1);if(e.key==='ArrowUp'||e.key==='PageUp')goTo(target-1)});
 
 // ---- input ----
 cv.addEventListener('pointerdown',e=>{
-  const wx=(e.clientX-VIEW.e)/VIEW.a,wy=(e.clientY-VIEW.f)/VIEW.d;
-  const hit=[...creatures].sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;
+  if(Math.abs(target-pos)>.02)return; // ignore clicks while scrolling
+  const wx=(e.clientX-VIEW0.e)/VIEW0.a,wy=(e.clientY-VIEW0.f)/VIEW0.d;
+  const hit=creatures.filter(c=>c.scene===currentScene).sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;
     return Math.abs(wx-c.x)<hw&&wy>c.y+c.b.minY*k&&wy<c.y+c.b.maxY*k});
   if(hit){hit.react=.6;say(hit)}
 });
 function showNoSpace(){document.getElementById('spaceNotice').hidden=false}
-async function saveAndSpawn(data,label){
-  let response;
-  try{response=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
-  catch(error){alert(`Could not reach the server to save ${label}: ${error.message}`);return}
-  if(!response.ok){const detail=await response.json().catch(()=>({}));alert(`The server could not save ${label} (${response.status}): ${detail.detail||response.statusText}`);return}
-  const saved=await response.json();
-  try{if(!spawn(saved))showNoSpace()}
-  catch(error){console.error('Creature saved, but could not be displayed:',error);alert(`${label} was saved, but the world could not display it: ${error.message}`)}
-}
-document.getElementById('ex').onclick=()=>saveAndSpawn(EXAMPLE,'the example creature');
-document.getElementById('f').onchange=async e=>{const f=e.target.files[0];if(!f)return;
-  try{const data=JSON.parse(await f.text());await saveAndSpawn(data,'that creature')}
-  catch(error){alert(`Could not read that creature JSON: ${error.message}`)}
-};
 
-// ---- sidebar: view and delete creatures ----
+// ---- sidebar: view, place, or delete creatures ----
 function thumb(c){const t=document.createElement('canvas');t.width=t.height=64;const x=t.getContext('2d');
   const b=c.b,w=b.maxX-b.minX,h=b.maxY-b.minY,s=56/Math.max(w,h);
   x.translate(32-(b.minX+w/2)*s,32-(b.minY+h/2)*s);x.scale(s,s);x.lineCap=x.lineJoin='round';
@@ -284,9 +290,28 @@ function refreshList(){const el=document.getElementById('list');if(!el)return;el
   document.getElementById('count').textContent=creatures.length;
   creatures.forEach(c=>{const row=document.createElement('div');row.className='row';row.appendChild(thumb(c));
     const n=document.createElement('span');n.textContent=(c.d.settings&&c.d.settings.name)||'???';row.appendChild(n);
+    const st=document.createElement('small');st.textContent=c.scene?'In '+SCENES[c.scene].label:'Out of the world';row.appendChild(st);
+    const here=c.scene===currentScene,place=document.createElement('button');
+    place.textContent=here?'Take out':'Put in '+SCENES[currentScene].label;place.className=here?'out':'place';
+    place.onclick=()=>setCreatureScene(c,here?null:currentScene);
     const d=document.createElement('button');d.textContent='Delete';
     d.onclick=async()=>{if(!confirm('Delete '+n.textContent+'?'))return;try{if(c.d.id&&c.d.id!=='example'){const r=await fetch('/api/creatures/'+encodeURIComponent(c.d.id),{method:'DELETE'});if(!r.ok)throw Error()}creatures.splice(creatures.indexOf(c),1);refreshList()}catch{alert('Could not delete this creature from the server.')}};
-    row.appendChild(d);el.appendChild(row)})}
+    const acts=document.createElement('div');acts.className='acts';acts.append(place,d);row.appendChild(acts);el.appendChild(row)})}
+async function setCreatureScene(c,nextScene){
+  const previous=c.scene;
+  if(nextScene===previous)return;
+  if(nextScene){c.scene=nextScene;if(!placeRandom(c)){c.scene=previous;alert('There is no room for this creature in that scene yet.');return}}
+  try{
+    if(c.d.id&&c.d.id!=='example'){
+      const r=await fetch('/api/creatures/'+encodeURIComponent(c.d.id)+'/scene',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene:nextScene})});
+      if(!r.ok)throw Error((await r.json().catch(()=>({}))).detail||'Server rejected the scene change');
+      c.d=await r.json();
+    }else c.d.scene=nextScene;
+    c.scene=nextScene;
+    if(nextScene)startRest(c);else{c.state='out';c.idle=null}
+    refreshList();
+  }catch(error){c.scene=previous;if(previous)placeRandom(c);alert('Could not update this creature\'s scene: '+error.message)}
+}
 document.getElementById('tg').onclick=()=>document.getElementById('side').classList.toggle('open');
 
 // ---- main loop ----
@@ -294,10 +319,18 @@ let last=performance.now();
 function frame(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;worldTime+=dt;
   maybeStartEncounters();
-  drawBackground();
-  creatures.forEach(c=>update(c,dt));
-  [...creatures].sort((a,b)=>footY(a)-footY(b)).forEach(drawCreature); // lower on screen = in front
-  requestAnimationFrame(frame);
+  pos+=(target-pos)*Math.min(1,dt*6);if(Math.abs(target-pos)<.001)pos=target; // eased scroll
+  SCENE_ORDER.forEach((id,i)=>{
+    const d=i-pos;if(Math.abs(d)>=1)return; // only scenes that are on screen
+    const skyY=d*H,isleY=d*H*1.25; // the island slides a bit faster than the sky (parallax)
+    const sky=new DOMMatrix([1,0,0,1,0,skyY]).multiply(VIEW0),isle=new DOMMatrix([1,0,0,1,0,isleY]).multiply(VIEW0);
+    paintScene(id,ctx,W,H,skyY,sky,isle,worldTime);
+    VIEW=isle;
+    const active=creatures.filter(c=>c.scene===id);
+    active.forEach(c=>update(c,dt));
+    active.sort((a,b)=>footY(a)-footY(b)).forEach(drawCreature); // lower on screen = in front
+  });
+  VIEW=VIEW0;requestAnimationFrame(frame);
 }
 // ---- account: who is logged in, log out, and back to login if the session ran out ----
 fetch('/api/me').then(r=>r.ok?r.json():Promise.reject(r)).then(u=>{const w=document.getElementById('who');w.textContent=u.username;w.hidden=false}).catch(r=>{if(r&&r.status===401)location.assign('/login.html')});
