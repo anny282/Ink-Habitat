@@ -98,6 +98,10 @@ $("form").addEventListener("submit", async e => {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.detail || "Something went wrong. Try again.");
     }
+    const user = await res.json();
+    if (user && typeof user.username === "string") {
+      localStorage.setItem("creatureWorld.username", user.username);
+    }
     window.location.assign("/world.html");
   } catch (err) {
     $("error").textContent = err.message === "Failed to fetch"
