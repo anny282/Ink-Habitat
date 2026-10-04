@@ -11,6 +11,8 @@
   :root {
     --sky: #E4E8F6;
     --paper: #FFFFFF;
+    --canvas: #E3E6EE;
+    --canvas-dot: #C3C8D6;
     --ink: #26314F;
     --ink-soft: #5C6688;
     --marigold: #F2B134;
@@ -27,6 +29,7 @@
   .lede { margin: 0 0 22px; color: var(--ink-soft); max-width: 60ch; }
 
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; align-items: start; }
+  @media (min-width: 881px) { .paper { --paper-nudge: 100px; } }
   @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
 
   .toolbar { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: center; margin-bottom: 12px; }
@@ -37,13 +40,16 @@
   .width-control input { width: 110px; accent-color: var(--ink); }
   .tool-btn { font: inherit; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); border-radius: 999px; padding: 4px 14px; cursor: pointer; }
   .tool-btn:disabled { opacity: .4; cursor: default; }
+  .edit-btns { display: flex; gap: 8px; align-items: center; flex-basis: 100%; }  /* own line: Undo, Clear, part count */
   .count { font-family: var(--hand); font-size: 1.4rem; margin-left: auto; }
   .count.full { color: var(--berry); }
 
   .paper {
     position: relative; aspect-ratio: 1; border: 2px solid var(--ink); border-radius: 22px; overflow: hidden;
-    background-color: var(--paper);
-    background-image: radial-gradient(var(--line) 1.2px, transparent 1.4px);
+    width: min(100%, 560px);  /* side by side, fitPaper() lines its bottom up with the button */
+    margin-left: var(--paper-nudge, 0px);
+    background-color: var(--canvas);
+    background-image: radial-gradient(var(--canvas-dot) 1.2px, transparent 1.4px);
     background-size: 22px 22px;
   }
   #draw { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
@@ -63,18 +69,11 @@
     padding: 12px 18px 10px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); margin-top: 4px;
   }
   .make:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .make:disabled { cursor: progress; opacity: .75; transform: none; box-shadow: 0 4px 0 var(--ink); }
   .error { color: var(--berry); font-weight: 700; min-height: 1.5em; margin: 0; }
 
   :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
 
-  #result { margin-top: 36px; display: none; }
-  #result.show { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
-  @media (max-width: 880px) { #result.show { grid-template-columns: 1fr; } }
-  #preview { width: 260px; height: 260px; background: var(--paper); border: 2px solid var(--ink); border-radius: 18px; display: block; }
-  .preview-note { color: var(--ink-soft); font-size: .9rem; margin: 8px 0 0; }
-  .json-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-  .json-head h2 { margin: 0 auto 0 0; }
-  pre { margin: 0; background: var(--ink); color: #E9ECF8; border-radius: 16px; padding: 16px; max-height: 420px; overflow: auto; font-size: .82rem; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -91,9 +90,11 @@
           <label for="width">Thickness</label>
           <input type="range" id="width" min="2" max="20" value="8">
         </div>
-        <button class="tool-btn" id="undo" type="button">Undo</button>
-        <button class="tool-btn" id="clear" type="button">Clear</button>
-        <span class="count" id="count" aria-live="polite">0 of 8 parts</span>
+        <div class="edit-btns">
+          <button class="tool-btn" id="undo" type="button">Undo</button>
+          <button class="tool-btn" id="clear" type="button">Clear</button>
+          <span class="count" id="count" aria-live="polite">0 of 8 parts</span>
+        </div>
       </div>
       <div class="paper"><canvas id="draw" aria-label="Drawing canvas"></canvas></div>
       <p class="hint">Tip: draw the body as one big shape, then add legs, eyes, a tail as separate strokes. Ctrl+Z undoes.</p>
@@ -128,21 +129,6 @@
     </section>
   </div>
 
-  <section id="result" aria-label="Creature output">
-    <div>
-      <h2>What the world sees</h2>
-      <canvas id="preview" width="520" height="520"></canvas>
-      <p class="preview-note">Normalized to the 200 × 200 box. The cross is the body's center (0, 0), the dashed box is <code>bounds</code>.</p>
-    </div>
-    <div>
-      <div class="json-head">
-        <h2>Creature JSON</h2>
-        <button class="tool-btn" id="copy" type="button">Copy</button>
-        <button class="tool-btn" id="download" type="button">Download</button>
-      </div>
-      <pre id="json"></pre>
-    </div>
-  </section>
 </main>
 
 <script>
@@ -151,7 +137,7 @@ const MAX_PARTS = 8;          // 1 body + up to 7 others
 const MAX_POINTS = 20;        // points per part after simplifying
 const HALF_BOX = 100;         // drawing fits roughly a 200 x 200 box around the body center
 const CANVAS_SIZE = 500;      // logical drawing space; independent of screen size
-const COLORS = ["#26314F", "#C8413A", "#F2B134", "#4E9A63", "#3D7DD8", "#9B5DE5", "#F28AB2", "#8A5A3B"];
+const COLORS = ["#26314F", "#C8413A", "#F2B134", "#4E9A63", "#3D7DD8", "#9B5DE5", "#F28AB2", "#8A5A3B", "#FFFFFF"];
 
 /* ===================== Integration hook ===================== */
 // Called with the draft creature when the user clicks "Bring it to life".
@@ -179,10 +165,21 @@ let strokes = [];      // { points: [[x,y],...], color, width } in logical canva
 let current = null;
 let penColor = COLORS[0];
 let penWidth = 8;
-let lastDraft = null;
 
 /* ===================== Canvas setup ===================== */
+// Side by side, the canvas grows until its bottom edge lines up with the "Bring it to life" button.
+const sideBySide = matchMedia("(min-width: 881px)");
+function fitPaper() {
+  const paper = canvas.parentElement;
+  if (!sideBySide.matches) { paper.style.width = ""; return; }
+  const bottom = document.querySelector(".make").getBoundingClientRect().bottom;
+  const size = bottom - paper.getBoundingClientRect().top;
+  const room = paper.parentElement.clientWidth - parseFloat(getComputedStyle(paper).marginLeft);
+  paper.style.width = Math.min(room, Math.max(300, size)) + "px";
+}
+
 function resizeCanvas() {
+  fitPaper();
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(rect.width * dpr);
@@ -471,13 +468,11 @@ document.getElementById("details").addEventListener("submit", async e => {
     return showError("Give your creature a name.");
   }
   showError("");
-  lastDraft = buildDraft();
-  showResult(lastDraft);
   const submit = e.currentTarget.querySelector("button[type=submit]");
   submit.disabled = true;
-  submit.textContent = "Saving…";
+  submit.textContent = "Bringing it to life…";
   try {
-    await onCreatureReady(lastDraft);
+    await onCreatureReady(buildDraft());
     showError("Saved! Opening the creature world…");
     window.location.assign("/world.html");
   } catch (error) {
@@ -487,72 +482,11 @@ document.getElementById("details").addEventListener("submit", async e => {
   }
 });
 
-/* ===================== Output panel ===================== */
-function prettyJSON(obj) {
-  // Keep [x, y] pairs on one line so the points stay readable
-  return JSON.stringify(obj, null, 2).replace(/\[\s+(-?\d+(?:\.\d+)?),\s+(-?\d+(?:\.\d+)?)\s+\]/g, "[$1, $2]");
-}
-
-function showResult(draft) {
-  document.getElementById("json").textContent = prettyJSON(draft);
-  drawPreview(draft);
-  const result = document.getElementById("result");
-  result.classList.add("show");
-  result.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-}
-
-function drawPreview(draft) {
-  const pv = document.getElementById("preview");
-  const c = pv.getContext("2d");
-  const s = pv.width / 260;              // preview shows local space from -130 to 130
-  c.setTransform(1, 0, 0, 1, 0, 0);
-  c.clearRect(0, 0, pv.width, pv.height);
-  c.setTransform(s, 0, 0, s, 130 * s, 130 * s);
-
-  const { minX, minY, maxX, maxY } = draft.bounds;
-  c.setLineDash([4, 4]);
-  c.strokeStyle = "#9AA3C4";
-  c.lineWidth = 1;
-  c.strokeRect(minX, minY, maxX - minX, maxY - minY);
-  c.setLineDash([]);
-
-  draft.parts.forEach(p => drawStroke(c, p.points, p.color, p.width));
-
-  c.strokeStyle = "#C8413A";
-  c.lineWidth = 1.5;
-  c.beginPath();
-  c.moveTo(-8, 0); c.lineTo(8, 0);
-  c.moveTo(0, -8); c.lineTo(0, 8);
-  c.stroke();
-
-  // Name label where the world will draw it: centered at x = 0, just above minY
-  c.fillStyle = "#26314F";
-  c.font = '700 16px Gaegu, "Comic Sans MS", cursive';
-  c.textAlign = "center";
-  c.fillText(draft.settings.name, 0, minY - 12);
-}
-
-document.getElementById("copy").addEventListener("click", async e => {
-  if (!lastDraft) return;
-  const text = prettyJSON(lastDraft);
-  try { await navigator.clipboard.writeText(text); e.target.textContent = "Copied"; }
-  catch { e.target.textContent = "Copy failed"; }
-  setTimeout(() => (e.target.textContent = "Copy"), 1500);
-});
-
-document.getElementById("download").addEventListener("click", () => {
-  if (!lastDraft) return;
-  const blob = new Blob([prettyJSON(lastDraft)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = (lastDraft.settings.name || "creature").toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".json";
-  a.click();
-  URL.revokeObjectURL(a.href);
-});
 
 /* ===================== Start ===================== */
 resizeCanvas();
 updateUI();
+document.fonts.ready.then(resizeCanvas);  // the form gets taller once its fonts load
 </script>
 </body>
 </html>
