@@ -303,4 +303,5 @@ function frame(now){
 fetch('/api/me').then(r=>r.ok?r.json():Promise.reject(r)).then(u=>{const w=document.getElementById('who');w.textContent=u.username;w.hidden=false}).catch(r=>{if(r&&r.status===401)location.assign('/login.html')});
 document.getElementById('logout').onclick=async()=>{await fetch('/api/logout',{method:'POST'}).catch(()=>{});location.assign('/login.html')};
 (async()=>{try{const r=await fetch('/api/creatures');if(r.status===401){location.assign('/login.html');return}if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
-</script></body></html>
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script><script src="/live.js"></script></body></html>

@@ -156,6 +156,16 @@ def test_clamps_stats():
     assert battle.snapshot({"id": "y"})["size"] == 40  # old creature without battle stats
 
 
+def test_forfeit_cuts_the_log():
+    log = battle.run_battle(team("a", [(30, 6), (70, 4), (50, 5)]), team("b", [(90, 3), (10, 8), (40, 5)]), 99)
+    for at in (0, 3.05, log["duration"] / 2):
+        cut = battle.forfeit(log, at, "a")
+        check_log_rules(cut)
+        assert cut["result"] == {"winner": "b", "reason": "forfeit"} and cut["duration"] == round(at, 2)
+        assert all(e["t"] <= cut["duration"] for e in cut["events"])
+    assert battle.forfeit(log, 999, "b")["duration"] == log["duration"]  # can't cut past the end
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

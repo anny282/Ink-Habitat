@@ -46,7 +46,7 @@
   .btn.main { background: var(--marigold); border-color: var(--ink); }
   .clock { font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 6px; white-space: nowrap; }
   .notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
-  .notice div { max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 22px 24px; text-align: center; }
+  .notice > div { max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 22px 24px; text-align: center; }
   .notice h1 { font-family: var(--hand); font-size: 2.2rem; line-height: 1; margin: 0 0 8px; }
   .notice p { margin: 0 0 14px; }
   :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
@@ -67,6 +67,13 @@
   .fight { margin-left: auto; font-family: var(--hand); font-size: 1.6rem; line-height: 1; color: var(--ink); background: var(--marigold); border: 2px solid var(--ink); border-radius: 14px; padding: 9px 18px 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ink); }
   .fight:disabled { opacity: .5; cursor: default; }
   .fight:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+  .live-panel { position: fixed; left: 12px; right: 12px; bottom: 76px; margin: 0 auto; max-width: 560px; max-height: calc(100vh - 220px); overflow-y: auto; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 16px 18px; }
+  .live-panel h2 { font-family: var(--hand); font-size: 2rem; line-height: 1; margin: 0 0 4px; }
+  .live-panel p { margin: 0 0 10px; }
+  .live-panel .farm { margin-bottom: 4px; }
+  .tile:disabled { cursor: default; opacity: .75; }
+  .tile:disabled[aria-pressed="true"] { opacity: 1; }
+  .notice .buttons { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   @media (max-width: 520px) { .cname { font-size: 1.3rem; } .panel { padding: 6px 8px 8px; } .controls .hide-small { display: none; } .btn { padding: 5px 8px; } }
 </style>
 </head>
@@ -83,21 +90,24 @@
   <button class="btn" type="button" id="speed">1×</button>
   <span class="clock" id="clock">0:00</span>
   <button class="btn main" type="button" id="again" hidden>Pick again</button>
+  <button class="btn" type="button" id="giveUp" hidden>Leave</button>
 </div>
 <div class="pick" id="pick" hidden>
   <div class="pick-card">
-    <h1>Pick your 3</h1>
-    <p class="lede">They fight in the order you pick them. Big creatures crit more; small ones dodge more.</p>
+    <h1 id="pickTitle">Pick your 3</h1>
+    <p class="lede" id="pickLede">They fight in the order you pick them. Big creatures crit more; small ones dodge more.</p>
     <div class="farm" id="farm" role="group" aria-label="Your creatures"></div>
     <div class="pick-foot">
       <span class="status" id="pickStatus" role="status"></span>
-      <a class="btn" href="/world.html">Farm</a>
+      <a class="btn" href="/world.html" id="pickBack">Farm</a>
       <button class="btn" type="button" id="randomTeam">Random</button>
       <button class="fight" type="button" id="fight" disabled>Fight!</button>
     </div>
   </div>
 </div>
-<div class="notice" id="notice"><div><h1>Battle!</h1><p id="noticeText">Getting the fighters ready…</p><a class="btn" href="/world.html" id="noticeBack" hidden>Back to my farm</a></div></div>
+<div class="notice" id="notice"><div><h1 id="noticeTitle">Battle!</h1><p id="noticeText">Getting the fighters ready…</p><div class="buttons" id="noticeButtons"><a class="btn" href="/world.html" id="noticeBack" hidden>Back to my farm</a></div></div></div>
+<div class="live-panel" id="livePanel" hidden><h2 id="lpTitle"></h2><p id="lpText" role="status"></p><div class="farm" id="lpChoices"></div><div class="pick-foot" id="lpButtons"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
 <script>
 // Plays a battle log (CREATURE_SPEC.md, "Battle log"). The replay never simulates: everything on screen is a
 // function of the playback time t and the log's events, so pause, restart and speed changes are free.
@@ -143,7 +153,7 @@ function prepare(data, viewer) {
     SIDES[s] = {
       key: s, name: side.name || (s === "a" ? "Player A" : "Player B"),
       pos: s === VIEWER ? "left" : "right", dir: s === VIEWER ? 1 : -1,
-      team: side.team.map(m => ({ ...m, look: build(drawings[m.creature], m) })),
+      team: side.team.map(m => ({ ...m, look: build(drawings[m.creature], m), wins: winsOf(drawings[m.creature]) })),
       enters: [], attacks: {}, hits: {}, misses: {}, faints: {},
     };
   }
@@ -160,7 +170,11 @@ function prepare(data, viewer) {
   $("notice").hidden = true; $("hud").hidden = false; $("controls").hidden = false;
   $("play").textContent = "Pause";
   $("again").hidden = mode !== "practice";
+  for (const id of ["play", "restart", "speed"]) $(id).hidden = mode === "live";
 }
+
+const winsOf = c => (c && c.battle && c.battle.wins) || 0;
+const CROWN_WINS = 5;   // more than this many wins shows a crown (spec)
 
 // A creature's drawing, ready to animate. Missing drawings become a simple blob so the replay still plays.
 function build(d, member) {
@@ -370,7 +384,7 @@ function updatePanel(panel, S, f, time) {
   const q = sel => panel.querySelector(sel);
   q(".player").textContent = S.key === VIEWER ? `${S.name} (you)` : S.name;
   const m = f ? f.m : S.team[0];
-  q(".cname").textContent = m ? m.name : "";
+  q(".cname").textContent = m ? m.name + (m.wins > CROWN_WINS ? " 👑" : "") : "";
   const hp = f ? Math.max(0, Math.round(f.hp)) : m ? m.maxHp : 0, max = m ? m.maxHp : 1;
   q(".fill").style.width = `${100 * hp / max}%`;
   q(".fill").classList.toggle("low", hp / max < .3);
@@ -387,7 +401,8 @@ function updatePanel(panel, S, f, time) {
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 function frame(now) {
-  if (lastFrame !== null && playing && LOG) t = Math.min(LOG.duration + 3, t + (now - lastFrame) / 1000 * speed);
+  if (LIVE && LOG) t = Math.min(LOG.duration + 3, liveTime());   // live: everyone watches the same moment
+  else if (lastFrame !== null && playing && LOG) t = Math.min(LOG.duration + 3, t + (now - lastFrame) / 1000 * speed);
   lastFrame = now;
   drawBackground();
   if (LOG) {
@@ -396,11 +411,12 @@ function frame(now) {
     fighters.forEach(f => drawFighter(f, t));
     fighters.forEach(f => drawEffects(f, t));
     drawBanner(t);
+    if (t < 0) drawText(String(Math.ceil(-t)), STAGE_W / 2, 330, 180, "#F2B134", 1);
     const byKey = Object.fromEntries(fighters.map(f => [f.S.key, f]));
     updatePanel($("panelL"), SIDES[VIEWER], byKey[VIEWER], t);
     const other = VIEWER === "a" ? "b" : "a";
     updatePanel($("panelR"), SIDES[other], byKey[other], t);
-    $("clock").textContent = `${fmt(Math.min(t, LOG.duration))} / ${fmt(LOG.duration)}`;
+    $("clock").textContent = `${fmt(Math.max(0, Math.min(t, LOG.duration)))} / ${fmt(LOG.duration)}`;
     if (t >= LOG.duration + 3 && playing) { playing = false; $("play").textContent = "Play"; }
   }
   requestAnimationFrame(frame);
@@ -451,13 +467,16 @@ function thumbnail(creature) {
 }
 
 function renderPicks() {
+  const locked = LIVE && LIVE.view && LIVE.view.locked && LIVE.view.locked.you;
   for (const tile of $("farm").children) {
+    tile.disabled = !!locked;
     const i = picks.indexOf(tile.dataset.id);
     tile.setAttribute("aria-pressed", String(i >= 0));
     tile.querySelector(".order").hidden = i < 0;
     tile.querySelector(".order").textContent = i + 1;
   }
-  $("fight").disabled = picks.length !== 3;
+  $("fight").disabled = picks.length !== 3 || !!locked;
+  if (LIVE) return liveTick();
   $("pickStatus").textContent = picks.length === 3 ? "Ready!" : `Pick ${3 - picks.length} more`;
 }
 
@@ -467,7 +486,9 @@ function buildFarm() {
     tile.type = "button"; tile.className = "tile"; tile.dataset.id = c.id;
     const name = document.createElement("b"), stats = document.createElement("small"), order = document.createElement("span");
     name.textContent = (c.settings && c.settings.name) || "?";
-    stats.textContent = `size ${c.battle.size} · attack ${c.battle.baseAttack}`;
+    const wins = winsOf(c);
+    stats.textContent = `size ${c.battle.size} · attack ${c.battle.baseAttack}` + (wins ? ` · ${wins} win${wins > 1 ? "s" : ""}` : "");
+    if (wins > CROWN_WINS) name.textContent = "👑 " + name.textContent;
     order.className = "order"; order.hidden = true;
     tile.append(order, thumbnail(c), name, stats);
     tile.onclick = () => {
@@ -506,13 +527,169 @@ async function startPractice(team) {
     $("randomTeam").disabled = false; $("fight").disabled = picks.length !== 3;
   }
 }
-$("fight").onclick = () => startPractice(picks.slice());
-$("randomTeam").onclick = () => startPractice(null);
+$("fight").onclick = () => LIVE ? send("lock", { team: picks.slice() }) : startPractice(picks.slice());
+$("randomTeam").onclick = () => {
+  if (!LIVE) return startPractice(null);
+  picks = [...farm].sort(() => Math.random() - .5).slice(0, 3).map(c => c.id);
+  renderPicks(); send("lock", { team: picks.slice() });
+};
+
+// ---------- live battle with a friend: /battle.html?room=<battleId> (server: rooms.py) ----------
+// The server sends this player's whole view after every change ("battle" event); the page just shows it.
+let LIVE = null;   // { id, socket, view, offset, logKey, panelKey }
+const liveTime = () => (Date.now() + LIVE.offset - LIVE.view.startAt) / 1000;
+const secondsLeft = () => LIVE.view.deadline ? Math.max(0, Math.ceil((LIVE.view.deadline - Date.now() - LIVE.offset) / 1000)) : 0;
+
+function makeButton(label, action, main) {
+  const b = document.createElement(typeof action === "string" ? "a" : "button");
+  b.className = main ? "btn main" : "btn"; b.textContent = label;
+  if (typeof action === "string") b.href = action; else { b.type = "button"; b.onclick = action; }
+  return b;
+}
+const homeButtons = () => [makeButton("Farm", "/world.html"), makeButton("Friends", "/friends.html", true)];
+
+function showMessage(title, text, buttons) {
+  LOG = null;
+  for (const id of ["pick", "livePanel", "hud", "controls"]) $(id).hidden = true;
+  $("noticeTitle").textContent = title; $("noticeText").textContent = text;
+  $("noticeButtons").replaceChildren(...buttons); $("notice").hidden = false;
+}
+
+async function send(event, data = {}) {
+  try {
+    const res = await LIVE.socket.timeout(10000).emitWithAck(event, { battleId: LIVE.id, ...data });
+    if (res && res.error) say(res.error);
+    return res;
+  } catch { say("The server didn't answer. Check your connection."); }
+}
+function say(text) {
+  const target = !$("pick").hidden ? "pickStatus" : !$("livePanel").hidden ? "lpText" : "noticeText";
+  $(target).textContent = text;
+  if (LIVE) LIVE.sayUntil = Date.now() + 4000;   // keep the message up a moment before countdowns overwrite it
+}
+
+function renderLive(v) {
+  LIVE.view = v; LIVE.offset = v.serverNow - Date.now();
+  const them = v.opponent.name;
+  if (v.stage === "invited") {
+    if (v.inviter) showMessage("Battle!", `Waiting for ${them} to say yes…`, [makeButton("Cancel", () => send("leave"))]);
+    else showMessage("Battle!", `${them} wants to battle!`, [
+      makeButton("No thanks", () => send("answer", { accept: false })),
+      makeButton("Let's go!", () => send("answer", { accept: true }), true)]);
+  } else if (v.stage === "cancelled") {
+    showMessage("No battle", v.reason || "This battle was cancelled.", homeButtons());
+  } else if (v.stage === "picking") {
+    LOG = null;
+    for (const id of ["notice", "livePanel", "hud", "controls"]) $(id).hidden = true;
+    $("pick").hidden = false;
+    $("pickTitle").textContent = `Pick your 3 vs ${them}`;
+    $("pickLede").textContent = `They fight in the order you pick them. ${them} can't see your picks until the battle starts.`;
+    $("fight").textContent = v.locked.you ? "Locked in" : "Lock in!";
+    $("randomTeam").disabled = v.locked.you;
+    if (v.locked.you && v.myTeam) picks = v.myTeam.slice();
+    renderPicks();
+  } else {   // playing, prize, done: the same replay, then the prize and result panels
+    $("pick").hidden = $("notice").hidden = true;
+    const key = `${v.log.duration}:${v.log.result.reason}`;
+    if (!LOG || LIVE.logKey !== key) { prepare({ log: v.log, creatures: v.creatures }, v.you); LIVE.logKey = key; }
+    LIVE.panelKey = null;
+    liveTick();
+  }
+}
+
+// Runs a few times a second: countdowns, the Leave button, and the panel after the replay.
+function liveTick() {
+  if (!LIVE || !LIVE.view) return;
+  const v = LIVE.view, them = v.opponent.name, quiet = Date.now() < (LIVE.sayUntil || 0);
+  if (v.stage === "invited" && !quiet) {
+    $("noticeText").textContent = v.inviter ? `Waiting for ${them} to say yes… ${secondsLeft()}s` : `${them} wants to battle! ${secondsLeft()}s`;
+  }
+  if (v.stage === "picking" && !quiet) {
+    const left = `${secondsLeft()}s left`;
+    $("pickStatus").textContent = v.locked.you
+      ? `Locked in! Waiting for ${them}… ${left}`
+      : `${picks.length === 3 ? "Ready!" : `Pick ${3 - picks.length} more.`} ${them} ${v.locked.opponent ? "is locked in." : "is picking…"} ${left}`;
+  }
+  if (!["playing", "prize", "done"].includes(v.stage) || !LOG) return;
+  const over = t >= LOG.duration + 1.5;
+  $("giveUp").hidden = !(v.stage === "playing" && t < LOG.duration);
+  $("livePanel").hidden = !over;
+  if (!over) return;
+  const loser = v.log.result.winner === "a" ? "b" : "a";
+  const prizeName = id => ((v.creatures[id] || {}).settings || {}).name || "a creature";
+  let key, title, text, choices = [], buttons = [];
+  if (v.stage === "prize" && v.choose) {
+    key = "choose"; title = "Pick your prize!";
+    text = `Take one of ${them}'s creatures home. ${secondsLeft()}s, then one is picked for you.`;
+    choices = v.log.sides[loser].team.map(m => v.creatures[m.creature]).filter(Boolean);
+  } else if (v.stage === "prize") {
+    key = "waiting"; title = `${them} won`; text = `${them} is picking one of your creatures… ${secondsLeft()}s`;
+  } else if (v.stage === "playing") {
+    key = "saving"; title = "Battle over"; text = "Saving the result…";
+  } else {
+    const prize = v.log.prize, won = v.log.result.winner === v.you;
+    key = "done"; buttons = homeButtons();
+    if (v.log.result.winner === "draw") { title = "Draw!"; text = "Nobody loses a creature."; }
+    else if (won) { title = "You won!"; text = prize ? `${prizeName(prize.creature)} joins your farm${prize.pickedBy === "auto" ? " (picked for you)" : ""}.` : "No creature changed hands."; }
+    else { title = `${them} won`; text = prize ? `${them} took your ${prizeName(prize.creature)}.` : "You keep all your creatures."; }
+    if (v.error) text = v.error;
+  }
+  if (!quiet) $("lpText").textContent = text;
+  if (LIVE.panelKey === key) return;     // rebuild only when the panel changes, so clicks aren't lost
+  LIVE.panelKey = key;
+  $("lpTitle").textContent = title;
+  $("lpChoices").replaceChildren(...choices.map(c => {
+    const tile = document.createElement("button"), name = document.createElement("b"), stats = document.createElement("small");
+    tile.type = "button"; tile.className = "tile";
+    name.textContent = (c.settings && c.settings.name) || "?";
+    stats.textContent = `size ${c.battle.size} · attack ${c.battle.baseAttack}`;
+    tile.append(thumbnail(c), name, stats);
+    tile.onclick = () => { for (const other of $("lpChoices").children) other.disabled = true; send("prize", { creature: c.id }); };
+    return tile;
+  }));
+  $("lpChoices").hidden = !choices.length;
+  $("lpButtons").replaceChildren(...buttons);
+  $("lpButtons").hidden = !buttons.length;
+}
+
+$("giveUp").onclick = async () => {
+  if (!confirm("Leave the battle? It counts as a loss, and the winner takes one of your creatures.")) return;
+  await send("leave");
+};
+$("pickBack").addEventListener("click", e => {
+  if (!LIVE) return;
+  e.preventDefault();
+  if (confirm("Leave? The battle will be cancelled.")) send("leave");
+});
+
+async function startLive(battleId) {
+  showMessage("Battle!", "Connecting…", []);
+  const res = await fetch("/api/creatures");
+  if (res.status === 401) { location.assign("/login.html"); return; }
+  farm = res.ok ? await res.json() : [];
+  buildFarm();
+  if (!window.io) return showMessage("Can't connect", "The battle connection didn't load. Check your internet and reload.", homeButtons());
+  const socket = io({ transports: ["websocket", "polling"] });
+  LIVE = { id: battleId, socket, view: null, offset: 0 };
+  $("pickBack").textContent = "Leave";
+  socket.on("battle", v => { if (v.battleId === battleId) renderLive(v); });
+  socket.on("connect", async () => {
+    const v = await socket.timeout(10000).emitWithAck("get", { battleId }).catch(() => null);
+    if (v && !v.error) renderLive(v);
+    else if (!LIVE.view) showMessage("No battle", (v && v.error) || "Couldn't find this battle.", homeButtons());
+  });
+  socket.on("connect_error", err => {
+    if (/log in/i.test(err.message)) location.assign("/login.html");
+    else if (!LIVE.view) showMessage("Can't connect", "Can't reach the server. Make sure it is running.", homeButtons());
+  });
+  setInterval(liveTick, 250);
+}
 
 (async () => {
   const params = new URLSearchParams(location.search);
-  mode = params.has("sample") ? "sample" : "practice";
+  mode = params.has("room") ? "live" : params.has("sample") ? "sample" : "practice";
   try {
+    if (mode === "live") return startLive(params.get("room"));
     if (mode === "practice") {
       const res = await fetch("/api/creatures");
       if (res.status === 401) { location.assign("/login.html"); return; }

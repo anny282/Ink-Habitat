@@ -169,6 +169,12 @@ def get_creatures(owner_id):
     return [with_defaults(json.loads(r["data"])) for r in rows]
 
 
+def count_creatures(owner_id):
+    with transaction() as cur:
+        cur.execute("SELECT COUNT(*) AS n FROM creatures WHERE owner_id = %s", (owner_id,))
+        return cur.fetchone()["n"]
+
+
 def delete_creature(owner_id, creature_id):
     """Deletes only a creature this user owns. Returns True if one was deleted."""
     with transaction() as cur:
@@ -180,11 +186,11 @@ def delete_creature(owner_id, creature_id):
 def friends_of(user_id):
     with transaction() as cur:
         cur.execute(
-            "SELECT u.id, u.username FROM friendships f JOIN users u ON u.id = f.friend_id "
-            "WHERE f.user_id = %s ORDER BY u.username",
+            "SELECT u.id, u.username, (SELECT COUNT(*) FROM creatures c WHERE c.owner_id = u.id) AS creatures "
+            "FROM friendships f JOIN users u ON u.id = f.friend_id WHERE f.user_id = %s ORDER BY u.username",
             (user_id,),
         )
-        return [{"id": r["id"], "username": r["username"]} for r in cur.fetchall()]
+        return [{"id": r["id"], "username": r["username"], "creatures": r["creatures"]} for r in cur.fetchall()]
 
 
 def add_friend(user_id, friend_code):
@@ -216,3 +222,39 @@ def remove_friend(user_id, friend_id):
         )
     return removed > 0
 
+
+
+def are_friends(user_id, other_id):
+    with transaction() as cur:
+        cur.execute("SELECT 1 FROM friendships WHERE user_id = %s AND friend_id = %s", (user_id, other_id))
+        return cur.fetchone() is not None
+
+
+# ---------- battles ----------
+
+def finish_battle(log, a_user, b_user, winner_user, loser_user, winning_ids, prize_id, picked_by):
+    """End of a live battle, all in one transaction (spec, "After the battle"): move the prize creature to
+    the winner (its drawnBy stays), add 1 to battle.wins for every creature on the winning team, and save
+    the battle with its log. Returns the prize actually given, or None (draw, or the creature is gone)."""
+    prize = None
+    with transaction() as cur:
+        if prize_id and winner_user:
+            cur.execute("SELECT owner_id FROM creatures WHERE id = %s FOR UPDATE", (prize_id,))
+            row = cur.fetchone()
+            if row and row["owner_id"] == loser_user:
+                cur.execute("UPDATE creatures SET owner_id = %s WHERE id = %s", (winner_user, prize_id))
+                prize = {"creature": prize_id, "pickedBy": picked_by}
+        for creature_id in winning_ids:
+            cur.execute("SELECT data FROM creatures WHERE id = %s FOR UPDATE", (creature_id,))
+            row = cur.fetchone()
+            if row:
+                creature = with_defaults(json.loads(row["data"]))
+                creature["battle"]["wins"] += 1
+                cur.execute("UPDATE creatures SET data = %s WHERE id = %s", (json.dumps(creature), creature_id))
+        log = {**log, "prize": prize}
+        winner = log["result"]["winner"]
+        cur.execute(
+            "INSERT INTO battles (id, a_user, b_user, winner, log, created_at) VALUES (%s, %s, %s, %s, %s, %s)",
+            (log["battleId"], a_user, b_user, winner, json.dumps(log), now()),
+        )
+    return prize

@@ -213,3 +213,13 @@ def run_battle(team_a, team_b, seed):
         "events": events,
         "result": result,
     }
+
+
+def forfeit(log, at, loser):
+    """The log cut short because `loser` ("a" or "b") left at `at` seconds: events after that are dropped,
+    along with any attack whose hit or miss would land after it, and the other side wins by forfeit."""
+    cut = round(max(0, min(at, log["duration"])), 2)
+    events = [e for e in log["events"] if e["t"] <= cut and e["type"] != "end"
+              and not (e["type"] == "attack" and secs(round(e["t"] * 100) + HIT_DELAY) > cut)]
+    result = {"winner": "b" if loser == "a" else "a", "reason": "forfeit"}
+    return {**log, "duration": cut, "events": events + [{"t": cut, "type": "end", **result}], "result": result}

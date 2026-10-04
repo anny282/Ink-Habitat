@@ -11,12 +11,14 @@ from pathlib import Path
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+import socketio
 
 import auth
 import battle
 import db
 import elevenlabs
 import gemini
+import rooms
 
 from rig import rig_parts
 
@@ -239,6 +241,8 @@ def create_creature(creature: dict = Body(...), user=Depends(current_user)):
 def delete_creature(creature_id: str, user=Depends(current_user)):
     if not ID_RE.fullmatch(creature_id):
         raise HTTPException(400, "Invalid creature id")
+    if rooms.creature_busy(creature_id):
+        raise HTTPException(409, "This creature is in a battle right now.")
     if not db.delete_creature(user["id"], creature_id):
         raise HTTPException(404, "Creature not found")
     (AUDIO / f"{creature_id}.mp3").unlink(missing_ok=True)
@@ -249,7 +253,7 @@ def delete_creature(creature_id: str, user=Depends(current_user)):
 
 @app.get("/api/friends")
 def list_friends(user=Depends(current_user)):
-    return db.friends_of(user["id"])
+    return [{**f, "online": rooms.is_online(f["id"]), "busy": rooms.is_busy(f["id"])} for f in db.friends_of(user["id"])]
 
 
 @app.post("/api/friends")
@@ -320,6 +324,24 @@ def root():
 app.mount("/audio", StaticFiles(directory=AUDIO), name="audio")
 app.mount("/", StaticFiles(directory=FRONTEND), name="frontend")
 
+# Live battles (rooms.py) share the port: Socket.IO answers /socket.io/, everything else goes to the app.
+asgi = socketio.ASGIApp(rooms.sio, other_asgi_app=app)
+
+def lan_address():
+    """This laptop's address on the local network (no traffic is sent)."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+        except OSError:
+            return None
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    # HOST=0.0.0.0 in .env lets other laptops on the same Wi-Fi open this server (for live battles).
+    host = os.environ.get("HOST", "127.0.0.1")
+    if host == "0.0.0.0" and lan_address():
+        print(f"\n  Others on your Wi-Fi can open http://{lan_address()}:8000\n")
+    uvicorn.run("server:asgi", host=host, port=8000, reload=True)
