@@ -292,7 +292,7 @@ function refreshList(){const el=document.getElementById('list');if(!el)return;el
     const n=document.createElement('span');n.textContent=(c.d.settings&&c.d.settings.name)||'???';row.appendChild(n);
     const st=document.createElement('small');st.textContent=c.scene?'In '+SCENES[c.scene].label:'Out of the world';row.appendChild(st);
     const here=c.scene===currentScene,place=document.createElement('button');
-    place.textContent=here?'Take out':'Put in '+SCENES[currentScene].label;place.className=here?'out':'place';
+    place.textContent=here?'Remove':'Put in '+SCENES[currentScene].label;place.className=here?'out':'place';
     place.onclick=()=>setCreatureScene(c,here?null:currentScene);
     const d=document.createElement('button');d.textContent='Delete';
     d.onclick=async()=>{if(!confirm('Delete '+n.textContent+'?'))return;try{if(c.d.id&&c.d.id!=='example'){const r=await fetch('/api/creatures/'+encodeURIComponent(c.d.id),{method:'DELETE'});if(!r.ok)throw Error()}creatures.splice(creatures.indexOf(c),1);refreshList()}catch{alert('Could not delete this creature from the server.')}};

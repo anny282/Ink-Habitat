@@ -175,6 +175,19 @@ def count_creatures(owner_id):
         return cur.fetchone()["n"]
 
 
+def set_creature_scene(owner_id, creature_id, scene):
+    """Moves a creature this user owns to a scene (None = out of the world). Returns it, or None if not theirs."""
+    with transaction() as cur:
+        cur.execute("SELECT data FROM creatures WHERE id = %s AND owner_id = %s FOR UPDATE", (creature_id, owner_id))
+        row = cur.fetchone()
+        if not row:
+            return None
+        creature = with_defaults(json.loads(row["data"]))
+        creature["scene"] = scene
+        cur.execute("UPDATE creatures SET data = %s WHERE id = %s", (json.dumps(creature), creature_id))
+    return creature
+
+
 def delete_creature(owner_id, creature_id):
     """Deletes only a creature this user owns. Returns True if one was deleted."""
     with transaction() as cur:

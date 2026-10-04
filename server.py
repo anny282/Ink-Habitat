@@ -240,17 +240,17 @@ def create_creature(creature: dict = Body(...), user=Depends(current_user)):
 
 
 @app.patch("/api/creatures/{creature_id}/scene")
-def move_creature(creature_id: str, payload: dict = Body(...)):
+def move_creature(creature_id: str, payload: dict = Body(...), user=Depends(current_user)):
     """Place a creature in one scene, or remove it from the world with null."""
-    path = path_for(creature_id)
-    if not path.exists():
-        raise HTTPException(404, "Creature not found")
+    if not ID_RE.fullmatch(creature_id):
+        raise HTTPException(400, "Invalid creature id")
     scene = payload.get("scene")
     if scene is not None and (not isinstance(scene, str) or scene not in SCENES):
         raise HTTPException(400, "scene must be grasslands, desert, ocean, or null")
-    creature = json.loads(path.read_text(encoding="utf-8"))
-    creature["scene"] = scene
-    return write(creature)
+    creature = db.set_creature_scene(user["id"], creature_id, scene)
+    if not creature:
+        raise HTTPException(404, "Creature not found")
+    return creature
 
 
 @app.delete("/api/creatures/{creature_id}")
