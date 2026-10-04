@@ -1,4 +1,4 @@
-"""TiDB storage: users, creatures, friendships, battles.
+"""TiDB storage: users, creatures (and their voice clips), friendships, battles.
 
 TiDB speaks the MySQL protocol, so this uses PyMySQL. Connection details come from .env
 (TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE). TiDB Cloud requires TLS.
@@ -28,6 +28,11 @@ SCHEMA = [
         data       JSON        NOT NULL,
         created_at DATETIME(6) NOT NULL,
         INDEX idx_owner (owner_id, created_at)
+    )""",
+    """CREATE TABLE IF NOT EXISTS creature_audio (
+        creature_id VARCHAR(64) PRIMARY KEY,
+        mp3         MEDIUMBLOB  NOT NULL,
+        created_at  DATETIME(6) NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS friendships (
         user_id    VARCHAR(32) NOT NULL,
@@ -83,7 +88,7 @@ def transaction():
 
 
 def init_schema():
-    """Create the database (if the user may) and the four tables. Safe to run every start."""
+    """Create the database (if the user may) and the tables. Safe to run every start."""
     name = os.environ.get("TIDB_DATABASE", "creature_farm")
     conn = pymysql.connect(
         host=os.environ["TIDB_HOST"], port=int(os.environ.get("TIDB_PORT", "4000")),
@@ -151,7 +156,8 @@ def with_defaults(creature):
     return creature
 
 
-def save_creature(owner_id, creature):
+def save_creature(owner_id, creature, audio=None):
+    """Saves a new creature, and its voice clip (mp3 bytes) if it has one, in one transaction."""
     drawn_by = (creature.get("drawnBy") or {}).get("userId")
     created = datetime.fromisoformat(creature["createdAt"].replace("Z", "+00:00")).astimezone(timezone.utc).replace(tzinfo=None)
     with transaction() as cur:
@@ -159,7 +165,28 @@ def save_creature(owner_id, creature):
             "INSERT INTO creatures (id, owner_id, drawn_by, data, created_at) VALUES (%s, %s, %s, %s, %s)",
             (creature["id"], owner_id, drawn_by, json.dumps(creature), created),
         )
+        if audio:
+            cur.execute("INSERT INTO creature_audio (creature_id, mp3, created_at) VALUES (%s, %s, %s)",
+                        (creature["id"], audio, now()))
     return creature
+
+
+def get_audio(creature_id):
+    """The creature's voice clip (mp3 bytes), or None."""
+    with transaction() as cur:
+        cur.execute("SELECT mp3 FROM creature_audio WHERE creature_id = %s", (creature_id,))
+        row = cur.fetchone()
+    return row["mp3"] if row else None
+
+
+def add_audio(creature_id, mp3):
+    """Stores a clip for an existing creature that has none yet (upload_audio.py). Returns True if stored."""
+    with transaction() as cur:
+        cur.execute("SELECT 1 FROM creatures WHERE id = %s", (creature_id,))
+        if not cur.fetchone():
+            return False
+        return cur.execute("INSERT IGNORE INTO creature_audio (creature_id, mp3, created_at) VALUES (%s, %s, %s)",
+                           (creature_id, mp3, now())) == 1
 
 
 def get_creatures(owner_id):
@@ -183,9 +210,12 @@ def set_creature_scene(owner_id, creature_id, scene):
 
 
 def delete_creature(owner_id, creature_id):
-    """Deletes only a creature this user owns. Returns True if one was deleted."""
+    """Deletes only a creature this user owns, with its voice clip. Returns True if one was deleted."""
     with transaction() as cur:
-        return cur.execute("DELETE FROM creatures WHERE id = %s AND owner_id = %s", (creature_id, owner_id)) == 1
+        if cur.execute("DELETE FROM creatures WHERE id = %s AND owner_id = %s", (creature_id, owner_id)) != 1:
+            return False
+        cur.execute("DELETE FROM creature_audio WHERE creature_id = %s", (creature_id,))
+        return True
 
 
 # ---------- friends (always mutual: one row each way) ----------

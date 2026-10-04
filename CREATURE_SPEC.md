@@ -179,7 +179,7 @@ Two short animations the creature plays at random when it stops. Index 0 comes f
 - `null` if the user left the sound box blank. A silent creature never speaks and clicking it only plays a small reaction animation.
 - `text`: the user's sound text, trimmed. Under 20 characters (max 19). No AI involved.
 - `voice`: **generated randomly by code at creation time.** The AI never touches it. See below.
-- `audioUrl`: starts as `null`. The backend generates the audio **once** and fills this in. The world plays this file when the creature is clicked, and also when its chattiness timer fires. If it's still `null`, show a speech bubble with no audio.
+- `audioUrl`: starts as `null`. The backend generates the audio **once**, stores the mp3 in TiDB next to the creature (so any server can play it), and fills this in as `/audio/<id>.mp3`. The world plays this file when the creature is clicked, and also when its chattiness timer fires. If it's still `null`, show a speech bubble with no audio.
 
 **How the random voice works.** ElevenLabs has no "pitch" setting, so variety comes from three sources: which voice, the voice settings, and a playback trick.
 

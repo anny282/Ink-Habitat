@@ -24,8 +24,7 @@ from rig import rig_parts
 
 BASE = Path(__file__).resolve().parent
 FRONTEND = BASE / "frontend"
-AUDIO = BASE / "data" / "audio"
-AUDIO.mkdir(parents=True, exist_ok=True)
+AUDIO = BASE / "data" / "audio"   # where clips were saved before they moved into TiDB (upload_audio.py)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 SCENES = {"grasslands", "desert", "ocean"}
 PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html", "/friends.html", "/battle.html"}
@@ -237,7 +236,8 @@ def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     rig_parts(creature["parts"])           # redo z now that roles are known
     creature = assign_id(fill_random(creature))
     creature["drawnBy"] = {"userId": user["id"], "name": user["username"]}
-    return db.save_creature(user["id"], elevenlabs.generate(creature, AUDIO, VOICE_IDS))
+    creature, audio = elevenlabs.generate(creature, VOICE_IDS)
+    return db.save_creature(user["id"], creature, audio)
 
 
 @app.patch("/api/creatures/{creature_id}/scene")
@@ -375,7 +375,21 @@ def root():
     return RedirectResponse("/world.html")
 
 
-app.mount("/audio", StaticFiles(directory=AUDIO), name="audio")
+@app.get("/audio/{filename}", include_in_schema=False)
+def audio(filename: str):
+    """A creature's voice clip from TiDB, so any server can play clips made on another one. A clip made
+    before that and not uploaded yet (upload_audio.py) is still played from this laptop's data/audio."""
+    creature_id = filename.removesuffix(".mp3")
+    if not filename.endswith(".mp3") or not ID_RE.fullmatch(creature_id):
+        raise HTTPException(404)
+    mp3 = db.get_audio(creature_id)
+    if mp3 is None and (AUDIO / filename).is_file():
+        mp3 = (AUDIO / filename).read_bytes()
+    if mp3 is None:
+        raise HTTPException(404)
+    return Response(mp3, media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
 app.mount("/", StaticFiles(directory=FRONTEND), name="frontend")
 
 # Live battles (rooms.py) share the port: Socket.IO answers /socket.io/, everything else goes to the app.

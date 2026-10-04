@@ -1,5 +1,6 @@
-"""ElevenLabs step (spec data flow 5): generate each creature's sound clip once and cache it.
+"""ElevenLabs step (spec data flow 5): generate each creature's sound clip once.
 
+The clip is saved in TiDB with the creature (db.save_creature), so every server can play it.
 Never raises: if generation fails, audioUrl stays null and the world shows a speech bubble only.
 """
 import json
@@ -42,11 +43,12 @@ def synthesize(text, voice):
         raise RuntimeError(f"ElevenLabs HTTP {e.code}: {e.read()[:300]!r}") from e
 
 
-def generate(creature, audio_dir, voice_ids):
-    """Write <audio_dir>/<id>.mp3 and fill sound.audioUrl. Tries one other voice if the first fails."""
+def generate(creature, voice_ids):
+    """Make the clip and fill sound.audioUrl. Returns (creature, mp3 bytes or None).
+    Tries one other voice if the first fails."""
     sound = creature.get("sound")
     if not sound:
-        return creature
+        return creature, None
     voices = [sound["voice"]["voiceId"]] + random.sample(
         [v for v in voice_ids if v != sound["voice"]["voiceId"]], k=1)
     for voice_id in voices:
@@ -58,8 +60,6 @@ def generate(creature, audio_dir, voice_ids):
             if "api_key" in str(e).lower():  # bad or missing key: another voice won't help
                 break
             continue
-        audio_dir.mkdir(parents=True, exist_ok=True)
-        (audio_dir / f"{creature['id']}.mp3").write_bytes(audio)
         sound["audioUrl"] = f"/audio/{creature['id']}.mp3"
-        break
-    return creature
+        return creature, audio
+    return creature, None
