@@ -1,6 +1,15 @@
-# Creature JSON Spec (v2)
+# Creature JSON Spec (v3)
 
-The contract between the **creation side** (drawing tool, Gemini, ElevenLabs) and the **world side** (rigging, animation, wandering). Don't change field names without telling each other.
+The contract between the **creation side** (drawing tool, Gemini, ElevenLabs) and the **world side** (rigging, animation, wandering), plus the **battle side** (accounts, battle engine, replay). Don't change field names without telling each other.
+
+## What changed from v2
+
+- `version` is now `3`.
+- New top-level `drawnBy`: who drew the creature. It never changes, even when the creature is won by another player. (The current owner is a database column, not part of the JSON.)
+- New `battle` object: `size` (measured by the drawing tool), `baseAttack` (picked by Gemini), and `wins` (counted by the server).
+- New **Battle log** section: the format the battle engine outputs and the replay scene plays.
+- The farm/world code can ignore `drawnBy` and `battle`, except for showing a crown when `battle.wins > 5`.
+- Old v2 creatures are upgraded on load: `drawnBy: null`, `battle: { "size": 40, "baseAttack": 5, "wins": 0 }`.
 
 ## What changed from v1
 
@@ -34,9 +43,10 @@ The UI turns empty textboxes into `null`. If movement or a behaviour is `null`, 
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "id": "string (uuid)",
   "createdAt": "ISO date string",
+  "drawnBy": { "userId": "string", "name": "anny" },
 
   "settings": {
     "name": "Sir Noodle",
@@ -89,6 +99,12 @@ The UI turns empty textboxes into `null`. If movement or a behaviour is `null`, 
     "restSeconds": 3,
     "speakEverySeconds": 30,
     "speedPxPerSec": 50
+  },
+
+  "battle": {
+    "size": 42,
+    "baseAttack": 6,
+    "wins": 0
   }
 }
 ```
@@ -188,6 +204,20 @@ The user does not enter these, and neither does the AI. **The creation code roll
 
 Use whole numbers for all three. The wider clamp ranges in the table below still apply as a safety net.
 
+### `drawnBy` (server)
+
+`{ "userId", "name" }` of the account that drew the creature, set by the server at creation time from the logged-in user. It never changes. When a creature is won in battle, only its owner in the database changes, so the farm can show "drawn by anny" on a creature someone else now owns. `null` for creatures made before accounts existed.
+
+### `battle` (three fields, three owners)
+
+| Field | Who fills it | Meaning | Range |
+|---|---|---|---|
+| `size` | **drawing tool** | How big the drawing was on the canvas **before** normalizing. `100 * sqrt(inkW * inkH) / 500`, where `inkW` x `inkH` is the bounding box of all strokes in the 500 x 500 logical canvas. A doodle in the corner is small, a drawing that fills the page is near 100. Whole number. | 5 to 100 |
+| `baseAttack` | **AI-filled** | How strong its attacks look: claws, teeth, horns, spikes and a fierce name push it up, round soft shapes push it down. Whole number. | 1 to 10 |
+| `wins` | **server** | Battles this creature was on the winning team for. Starts at 0, only the server increments it. More than 5 wins shows a crown. | 0 and up |
+
+`size` and `baseAttack` are raw stats. The battle engine turns them into fighting numbers (hp, damage, attack speed) with formulas that live in the engine code, so they can be tuned without changing saved creatures. The intent: bigger creatures have more hp but attack slower, smaller ones have less hp but attack faster.
+
 ## Clamp table (world side always applies)
 
 | Field | Min | Max | Default |
@@ -208,19 +238,91 @@ Use whole numbers for all three. The wider clamp ranges in the table below still
 | `voice.style` | 0 | 1 | 0.3 |
 | `voice.speed` | 0.7 | 1.2 | 1 |
 | `voice.playbackRate` | 0.5 | 2 | 1 |
+| `battle.size` | 5 | 100 | 40 |
+| `battle.baseAttack` | 1 | 10 | 5 |
+| `battle.wins` | 0 | n/a | 0 |
 
 ## Data flow
 
-1. **Drawing tool** collects `settings` from the textboxes and outputs `parts` (points, color, width) and `bounds`.
+1. **Drawing tool** collects `settings` from the textboxes and outputs `parts` (points, color, width), `bounds`, and `battle.size` (measured before normalizing).
 2. **Rigging code** fills `parent`, `pivot`, `z`.
-3. **Gemini call** gets `settings` plus a summary of the parts (size, position relative to the body, orientation), and returns JSON only: each part's `role` and `moves`, then `locomotion` and `idles`. That's all it decides.
-4. **Backend** validates and clamps the Gemini response, then fills in the rest with plain code: `sound.text` (from the user's input, or `sound: null`), a random `personality`, and a random `voice`.
+3. **Gemini call** gets `settings` plus a summary of the parts (size, position relative to the body, orientation), and returns JSON only: each part's `role` and `moves`, then `locomotion`, `idles` and `battle.baseAttack`. That's all it decides.
+4. **Backend** validates and clamps the Gemini response, then fills in the rest with plain code: `sound.text` (from the user's input, or `sound: null`), a random `personality`, a random `voice`, `drawnBy` from the logged-in account, and `battle.wins: 0`.
 5. **Backend** generates the audio once if `sound` isn't null, using the random voice, fills `audioUrl`, and saves.
 6. **World** loads creatures and runs them with no further AI calls. Each creature loops: rest (play a random idle) for `restSeconds`, walk to a random spot, repeat. Separately, a timer plays its sound every `speakEverySeconds`, at its `playbackRate`.
 
 ## Who owns what
 
-- **Person A (creation side):** textboxes and `settings`, `parts[].points/color/width`, `bounds`, the Gemini call (roles, `moves`, locomotion, idles), the random personality and random voice rolls, and audio generation and `audioUrl`.
-- **Person B (world side):** rigging (`parent`, `pivot`, `z`), `locomotion` and `idles` playback, wander loop, name label, click and speak behavior (including applying `playbackRate`), and the clamp table.
+- **Person A (creation side):** textboxes and `settings`, `parts[].points/color/width`, `bounds`, `battle.size`, the Gemini call (roles, `moves`, locomotion, idles, `baseAttack`), the random personality and random voice rolls, and audio generation and `audioUrl`.
+- **Person B (world side):** rigging (`parent`, `pivot`, `z`), `locomotion` and `idles` playback, wander loop, name label, click and speak behavior (including applying `playbackRate`), and the clamp table. In v3, also the crown for creatures with `battle.wins > 5`.
+- **Person A (battle side, v3):** accounts and database, `drawnBy`, friends, the battle engine and battle log, battle rooms, prize transfer and `wins`, and (unless Person B takes it) the 2D replay scene.
 
 `example_creature.json` is a hand-written creature in this format for Person B to build against. Person A should make the drawing tool output the same shape.
+
+## Battle log (v3)
+
+The battle engine is a **pure function**: `run_battle(teamA, teamB, seed) -> log`. The same teams and the same seed always give the exact same log. The server runs it once, saves the log, and sends it to both players. Clients never simulate; they only play the log back.
+
+### Battle rules (summary)
+
+- Each side brings 1 to 3 creatures in the order they picked them. One creature per side is on the field at a time.
+- Both creatures attack on their own timers, at the same time. Each attack can hit, miss or crit (seeded randomness).
+- When a creature faints, that side's next creature enters. The survivor stays in **with the hp it has left**.
+- The battle ends when one side has no creatures left (`knockout`), when a player disconnects (`forfeit`), or after 90 seconds (`timeout`). On timeout, the side with the larger share of its total hp left wins; equal shares are a `draw`.
+- The exact numbers (hp, damage, attack speed from `size` and `baseAttack`, miss and crit chance) live in the engine code and are tuned with the simulator.
+
+### Shape
+
+```json
+{
+  "version": 1,
+  "battleId": "string",
+  "seed": 192837465,
+  "startAt": "ISO date string: when both players start the replay",
+  "duration": 41.6,
+
+  "sides": {
+    "a": { "userId": "u1", "name": "anny",
+           "team": [ { "creature": "c1", "name": "Sir Noodle", "size": 42, "baseAttack": 6, "maxHp": 120 } ] },
+    "b": { "userId": "u2", "name": "jade",
+           "team": [ { "creature": "c7", "name": "Chicken", "size": 75, "baseAttack": 3, "maxHp": 180 } ] }
+  },
+
+  "events": [
+    { "t": 0.0, "type": "enter",  "side": "a", "slot": 0, "creature": "c1", "hp": 120 },
+    { "t": 0.0, "type": "enter",  "side": "b", "slot": 0, "creature": "c7", "hp": 180 },
+    { "t": 1.2, "type": "attack", "side": "a", "creature": "c1", "target": "c7" },
+    { "t": 1.5, "type": "hit",    "side": "b", "creature": "c7", "by": "c1", "damage": 14, "crit": false, "hp": 166 },
+    { "t": 2.0, "type": "attack", "side": "b", "creature": "c7", "target": "c1" },
+    { "t": 2.3, "type": "miss",   "side": "a", "creature": "c1", "by": "c7" },
+    { "t": 9.8, "type": "faint",  "side": "b", "creature": "c7" },
+    { "t": 41.6, "type": "end", "winner": "a", "reason": "knockout" }
+  ],
+
+  "result": { "winner": "a", "reason": "knockout" },
+  "prize": { "creature": "c7", "pickedBy": "winner" }
+}
+```
+
+- `a` is the player who sent the invite, `b` is the one who accepted. The replay always draws the **viewer's** side on the left and mirrors the opponent on the right.
+- `sides.*.team` is a snapshot of the stats at battle time, so the replay and old battles don't change if a creature's stats change later. The replay loads each creature's drawing by its id.
+- `t` is seconds from `startAt`, rounded to 0.01. Events are sorted by `t`. Events with the same `t` play in list order.
+
+### Events
+
+| `type` | Fields | Replay does |
+|---|---|---|
+| `enter` | `side`, `slot` (index in the team), `creature`, `hp` | creature walks in from its edge; hp bar shows `hp` out of `maxHp` |
+| `attack` | `side`, `creature` (attacker), `target` | attacker dashes toward the target and back |
+| `hit` | `side` and `creature` (**the target**), `by`, `damage`, `crit`, `hp` (after the hit) | target shakes, hp bar drops to `hp`, bigger effect if `crit` |
+| `miss` | `side` and `creature` (**the target**), `by` | target dodges, "miss" text |
+| `faint` | `side`, `creature` | creature falls over and fades out |
+| `end` | `winner` (`"a"`, `"b"` or `"draw"`), `reason` (`knockout`, `timeout`, `forfeit`) | victory moment |
+
+The `hit` or `miss` for an attack always comes 0.3 seconds after its `attack`, so the dash lands on time.
+
+### After the battle
+
+- `result` repeats the `end` event so the server and the lobby can read it without scanning `events`.
+- `prize`: the winner picks one creature from the **loser's battle team** within 30 seconds. If they don't, the server picks one at random and sets `pickedBy: "auto"`. `null` for a draw, and `null` until the pick is made.
+- In **one database transaction**, the server moves the prize creature to the winner (its `drawnBy` stays the same), adds 1 to `battle.wins` for every creature on the winning team, and saves the battle record.
