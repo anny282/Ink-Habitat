@@ -66,6 +66,14 @@ def is_online(user_id):
     return bool(online.get(user_id))
 
 
+def presence_state(user_id):
+    """Drawing takes priority when a user has multiple app tabs open."""
+    states = [sockets.get(sid, {}).get("state", "online") for sid in online.get(user_id, ())]
+    if "drawing" in states:
+        return "drawing"
+    return "online" if states else "offline"
+
+
 def is_busy(user_id):
     return user_id in active
 
@@ -285,9 +293,10 @@ def user_from_cookie(environ):
     return auth.read_token(morsel.value) if morsel else None
 
 
-async def tell_friends(user_id, is_on):
+async def tell_friends(user_id):
+    state = presence_state(user_id)
     for friend in await asyncio.to_thread(db.friends_of, user_id):
-        await sio.emit("presence", {"userId": user_id, "online": is_on}, room=f"user:{friend['id']}")
+        await sio.emit("presence", {"userId": user_id, "state": state}, room=f"user:{friend['id']}")
 
 
 @sio.event
@@ -297,7 +306,7 @@ async def connect(sid, environ, auth_data=None):
     if not row:
         raise socketio.exceptions.ConnectionRefusedError("Log in first")
     async with state_lock():
-        sockets[sid] = {"id": row["id"], "name": row["username"]}
+        sockets[sid] = {"id": row["id"], "name": row["username"], "state": "online"}
         first = not online.get(row["id"])
         online.setdefault(row["id"], set()).add(sid)
         await sio.enter_room(sid, f"user:{row['id']}")
@@ -309,25 +318,47 @@ async def connect(sid, environ, auth_data=None):
                 task.cancel()
             await sio.emit("battle", view(b, side), to=sid)
     if first:
-        asyncio.create_task(tell_friends(row["id"], True))   # don't hold up the connection on DB calls
+        asyncio.create_task(tell_friends(row["id"]))   # don't hold up the connection on DB calls
+
+
+@sio.event
+async def activity(sid, data):
+    """Clients report whether this tab is the drawing page or another app page."""
+    user = sockets.get(sid)
+    state = (data or {}).get("state")
+    if not user or state not in ("online", "drawing"):
+        return {"error": "Invalid activity state."}
+    user_id = user["id"]
+    before = presence_state(user_id)
+    user["state"] = state
+    after = presence_state(user_id)
+    if after != before:
+        await tell_friends(user_id)
+    return {"ok": True, "state": after}
 
 
 @sio.event
 async def disconnect(sid, reason=None):
+    changed_user_id = None
     async with state_lock():
-        user = sockets.pop(sid, None)
+        user = sockets.get(sid)
         if not user:
             return
+        before = presence_state(user["id"])
+        sockets.pop(sid, None)
         sids = online.get(user["id"], set())
         sids.discard(sid)
         if sids:
-            return
-        online.pop(user["id"], None)
-        b = battles.get(active.get(user["id"]))
-        if b:
-            side = side_of(b, user["id"])
-            b["away"][side] = asyncio.create_task(_gone(b, side, user["id"]))
-    asyncio.create_task(tell_friends(user["id"], False))
+            changed_user_id = user["id"] if presence_state(user["id"]) != before else None
+        else:
+            online.pop(user["id"], None)
+            changed_user_id = user["id"]
+            b = battles.get(active.get(user["id"]))
+            if b:
+                side = side_of(b, user["id"])
+                b["away"][side] = asyncio.create_task(_gone(b, side, user["id"]))
+    if changed_user_id:
+        asyncio.create_task(tell_friends(changed_user_id))
 
 
 async def _gone(b, side, user_id):

@@ -44,6 +44,7 @@
   .btn { font: inherit; font-weight: 700; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 10px; padding: 5px 10px; cursor: pointer; text-decoration: none; white-space: nowrap; }
   .btn:hover { border-color: var(--ink); }
   .btn.main { background: var(--marigold); border-color: var(--ink); }
+  .btn:disabled { color: var(--ink-soft); background: #D5D9E8; border-color: #B7BED8; cursor: not-allowed; opacity: 1; box-shadow: none; }
   .clock { font-weight: 700; font-variant-numeric: tabular-nums; padding: 0 6px; white-space: nowrap; }
   .notice { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
   .notice > div { max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 22px 24px; text-align: center; }
@@ -52,6 +53,19 @@
   :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
   .pick { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; }
   .pick-card { width: 100%; max-width: 640px; max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 20px 20px 16px; }
+  .battle-home-card { max-width: 520px; }
+  .friend-choices { display: grid; gap: 8px; overflow-y: auto; min-height: 0; padding: 2px; }
+  .friend-choice { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px 14px; background: var(--sky); border-radius: 14px; padding: 10px 12px; }
+  .friend-choice .identity { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+  .friend-choice b { overflow: hidden; text-overflow: ellipsis; }
+  .friend-choice small { grid-column: 1; grid-row: 2; color: var(--ink-soft); }
+  .friend-choice .btn { grid-column: 2; grid-row: 1 / span 2; }
+  .presence { font-size: .85rem; font-weight: 700; }
+  .presence.online { color: #39763a; }
+  .presence.offline { color: var(--ink-soft); }
+  .presence.drawing { color: #9a6500; }
+  .home-actions { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .home-message { min-height: 1.5em; margin: 8px 0 0; color: var(--ink-soft); font-weight: 700; }
   .pick-card h1 { font-family: var(--hand); font-size: 2.4rem; line-height: 1; margin: 0 0 4px; }
   .pick-card .lede { margin: 0 0 12px; color: var(--ink-soft); }
   .farm { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 10px; overflow-y: auto; padding: 4px; margin: 0 -4px; }
@@ -131,6 +145,19 @@
     </div>
   </div>
 </div>
+<div class="pick" id="battleHome" hidden>
+  <div class="pick-card battle-home-card">
+    <h1>Battle</h1>
+    <p class="lede">Challenge a friend who’s here, or practice against the computer.</p>
+    <h2 style="font-size:1.25rem;margin:0 0 8px">Your friends</h2>
+    <div id="battleFriends" class="friend-choices" aria-live="polite"></div>
+    <p id="battleHomeMessage" class="home-message" role="status"></p>
+    <div class="home-actions">
+      <a class="btn" href="/world.html">Back to my farm</a>
+      <button class="btn main" type="button" id="practiceComputer">Practice vs computer</button>
+    </div>
+  </div>
+</div>
 <div class="pick" id="cards" hidden>
   <div class="pick-card">
     <h1>Pick a card</h1>
@@ -142,6 +169,7 @@
 <div class="notice" id="notice"><div><h1 id="noticeTitle">Battle!</h1><p id="noticeText">Getting the fighters ready…</p><div class="buttons" id="noticeButtons"><a class="btn" href="/world.html" id="noticeBack" hidden>Back to my farm</a></div></div></div>
 <div class="live-panel" id="livePanel" hidden><h2 id="lpTitle"></h2><p id="lpText" role="status"></p><div class="farm" id="lpChoices"></div><div class="pick-foot" id="lpButtons"></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script>
+<script src="/live.js"></script>
 <script>
 // Plays a battle log (CREATURE_SPEC.md, "Battle log"). The replay never simulates: everything on screen is a
 // function of the playback time t and the log's events, so pause, restart and speed changes are free.
@@ -663,7 +691,7 @@ function makeButton(label, action, main) {
   if (typeof action === "string") b.href = action; else { b.type = "button"; b.onclick = action; }
   return b;
 }
-const homeButtons = () => [makeButton("Farm", "/world.html"), makeButton("Friends", "/friends.html", true)];
+const homeButtons = () => [makeButton("Back to my farm", "/world.html"), makeButton("Back to Battle", "/battle.html", true)];
 
 function showMessage(title, text, buttons) {
   LOG = null;
@@ -816,15 +844,17 @@ async function startLive(battleId) {
   farm = res.ok ? await res.json() : [];
   buildFarm();
   if (!window.io) return showMessage("Can't connect", "The battle connection didn't load. Check your internet and reload.", homeButtons());
-  const socket = io({ transports: ["websocket", "polling"] });
+  const socket = window.liveSocket || io({ transports: ["websocket", "polling"] });
   LIVE = { id: battleId, socket, view: null, offset: 0 };
   $("pickBack").textContent = "Leave";
   socket.on("battle", v => { if (v.battleId === battleId) renderLive(v); });
-  socket.on("connect", async () => {
+  const getBattle = async () => {
     const v = await socket.timeout(10000).emitWithAck("get", { battleId }).catch(() => null);
     if (v && !v.error) renderLive(v);
     else if (!LIVE.view) showMessage("No battle", (v && v.error) || "Couldn't find this battle.", homeButtons());
-  });
+  };
+  socket.on("connect", getBattle);
+  if (socket.connected) getBattle();
   socket.on("connect_error", err => {
     if (/log in/i.test(err.message)) location.assign("/login.html");
     else if (!LIVE.view) showMessage("Can't connect", "Can't reach the server. Make sure it is running.", homeButtons());
@@ -832,11 +862,64 @@ async function startLive(battleId) {
   setInterval(liveTick, 250);
 }
 
+function showBattleHome() {
+  $("notice").hidden = true;
+  $("battleHome").hidden = false;
+  const loadFriends = async () => {
+    const list = $("battleFriends"), message = $("battleHomeMessage");
+    try {
+      const res = await fetch("/api/friends");
+      if (res.status === 401) { location.assign("/login.html"); return; }
+      const friends = await res.json();
+      if (!res.ok) throw new Error(friends.detail || "Couldn't load your friends.");
+      list.replaceChildren();
+      if (!friends.length) {
+        const empty = document.createElement("p"); empty.className = "lede";
+        empty.textContent = "No friends yet. Add friends from the Friends page."; list.append(empty);
+        message.textContent = ""; return;
+      }
+      for (const friend of friends) {
+        const row = document.createElement("div"), identity = document.createElement("div"), name = document.createElement("b");
+        const status = document.createElement("span"), detail = document.createElement("small"), invite = document.createElement("button");
+        const state = ["online", "drawing", "offline"].includes(friend.state) ? friend.state : "offline";
+        row.className = "friend-choice"; identity.className = "identity"; name.textContent = friend.username;
+        status.className = `presence ${state}`;
+        status.textContent = state === "drawing" ? "✏️ Drawing" : state === "online" ? "● Online" : "○ Offline";
+        detail.textContent = state === "offline" ? "Unavailable while offline"
+          : state === "drawing" ? "Unavailable while drawing"
+          : friend.busy ? "Already in a battle"
+          : friend.creatures < 3 ? `Needs 3 creatures (has ${friend.creatures})`
+          : "Ready for a 3 vs 3 battle";
+        invite.className = "btn main"; invite.type = "button"; invite.textContent = "Battle";
+        invite.disabled = state !== "online" || friend.busy || friend.creatures < 3 || !window.liveSocket;
+        invite.onclick = async () => {
+          invite.disabled = true; message.textContent = `Inviting ${friend.username}…`;
+          try {
+            const result = await window.liveSocket.timeout(10000).emitWithAck("invite", { friendId: friend.id });
+            if (result.error) throw new Error(result.error);
+            location.assign(`/battle.html?room=${encodeURIComponent(result.battleId)}`);
+          } catch (err) {
+            message.textContent = err.message.includes("timed out") ? "The server didn't answer. Try again." : err.message;
+            loadFriends();
+          }
+        };
+        identity.append(name, status); row.append(identity, detail, invite); list.append(row);
+      }
+      message.textContent = "";
+    } catch (err) { message.textContent = err.message; }
+  };
+  loadFriends();
+  if (window.liveSocket) window.liveSocket.on("presence", loadFriends);
+  setInterval(loadFriends, 15000);
+}
+$("practiceComputer").onclick = () => location.assign("/battle.html?practice");
+
 (async () => {
   const params = new URLSearchParams(location.search);
-  mode = params.has("room") ? "live" : params.has("sample") ? "sample" : "practice";
+  mode = params.has("room") ? "live" : params.has("sample") ? "sample" : params.has("practice") ? "practice" : "lobby";
   try {
     if (mode === "live") return startLive(params.get("room"));
+    if (mode === "lobby") return showBattleHome();
     if (mode === "practice") {
       const res = await fetch("/api/creatures");
       if (res.status === 401) { location.assign("/login.html"); return; }

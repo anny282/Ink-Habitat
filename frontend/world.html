@@ -3,11 +3,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#cfe8d5;font-family:system-ui,sans-serif}
+[hidden]{display:none!important}
 canvas{display:block}
 #ui{position:fixed;top:10px;left:10px;display:flex;gap:8px;align-items:center}
 #ui a,#ui button{background:#fff;border:0;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;text-decoration:none;cursor:pointer;box-shadow:0 2px 6px #0003}
-#side{position:fixed;top:0;right:0;bottom:0;width:280px;background:#fffe;padding:12px;overflow:auto;transform:translateX(100%);transition:transform .2s;box-shadow:-4px 0 12px #0002;font-size:14px}
-#ui #who{background:#fff;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;box-shadow:0 2px 6px #0003}
+#side{position:fixed;top:0;right:0;bottom:0;width:280px;background:#fffe;padding:12px;overflow:auto;transform:translateX(100%);transition:transform .2s;box-shadow:-4px 0 12px #0002;font-size:14px;z-index:6}
+#account{position:fixed;top:10px;right:10px;display:flex;align-items:center;gap:8px;z-index:5}
+#account #who{background:#26314fee;color:#fff;border-radius:999px;padding:8px 14px;font:700 14px system-ui;letter-spacing:.03em}
+#account #logout{background:#fff;border:0;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;cursor:pointer;box-shadow:0 2px 6px #0003}
+#visitNav{position:fixed;top:10px;right:10px;z-index:5;display:flex;align-items:center;gap:10px;background:#26314fee;color:#fff;border-radius:14px;padding:8px 12px;font:700 14px system-ui}
+#visitNav a{color:#26314f;background:#fff;border-radius:9px;padding:6px 10px;text-decoration:none}
 #side.open{transform:none}#side h3{margin:4px 0 10px}
 .row{display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:6px;margin-bottom:8px;background:#f4f4f0;border-radius:10px;padding:6px}
 .row canvas{background:#e6f0d8;border-radius:8px;width:48px;height:48px;grid-row:1 / span 2}.row span{font-weight:600;grid-column:2}
@@ -24,10 +29,13 @@ canvas{display:block}
 @keyframes fadeTitle{0%{opacity:0;transform:translate(-50%,10px)}20%,70%{opacity:1;transform:translate(-50%,0)}100%{opacity:0}}
 #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);font:600 13px system-ui;color:#fff;text-shadow:0 1px 4px #0006;transition:opacity .4s;pointer-events:none;animation:bob 1.6s infinite}
 @keyframes bob{50%{transform:translate(-50%,5px)}}
-@media(max-width:620px){#ui{right:8px;flex-wrap:wrap;max-width:calc(100vw - 16px)}#ui a,#ui button{padding:7px 10px;font-size:12px}}
+@media(max-width:620px){#ui{right:8px;flex-wrap:wrap;max-width:calc(100vw - 150px)}#ui a,#ui button,#account #logout{padding:7px 10px;font-size:12px}#account{right:8px}#account #who{padding:7px 9px;font-size:12px}}
 </style></head><body>
 <canvas id="c"></canvas>
-<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><a href="/friends.html">Friends</a><a href="/battle.html">Practice battle</a><span id="who" hidden></span><button id="logout">Log out</button></div>
+<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><a href="/friends.html">Friends</a><a href="/battle.html">Battle</a></div>
+<div id="account"><span id="who" hidden></span><button id="logout">Log out</button></div>
+<div id="visitNav" hidden><span id="visitLabel">Friend's farm</span><a href="/friends.html">Back to Friends</a></div>
+<div id="visitEmpty" hidden style="position:fixed;top:58px;left:50%;transform:translateX(-50%);max-width:90vw;background:#fff;border-radius:12px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There are no creatures placed in scenes right now.</div>
 <div id="spaceNotice" hidden style="position:fixed;top:58px;left:10px;max-width:340px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There is no safe space for another creature. Delete one from the Creatures list to make room.</div>
 <div id="side"><h3>Manage Creatures</h3><div style="font-size:12px;color:#666;margin:-4px 0 12px">Each creature lives in one scene. Scroll to a scene, then put creatures in it or take them out. Delete removes a creature for good.</div><div id="list"></div></div>
 <div id="dots" aria-label="Scenes"></div><div id="sceneName"></div><div id="hint">Scroll down for more scenes &darr;</div>
@@ -50,6 +58,7 @@ personality:{restSeconds:3,speakEverySeconds:30,speedPxPerSec:50}};
 
 // ---- helpers ----
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');let W,H;
+const visitId=new URLSearchParams(location.search).get('visit');
 let VIEW=new DOMMatrix(),VIEW0=VIEW; // VIEW0 = base view; VIEW = the view of the scene being drawn (shifted while scrolling)
 function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;const k=Math.min(W/1960,H/1496)*.96;VIEW0=VIEW=new DOMMatrix().translate((W-1960*k)/2,(H-1496*k)/2).scale(k,k)}resize();addEventListener('resize',resize);
 const TAU=Math.PI*2,rnd=(a,b)=>a+Math.random()*(b-a);
@@ -289,6 +298,7 @@ addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='PageDown')goTo(t
 
 // ---- input ----
 cv.addEventListener('pointerdown',e=>{
+  if(visitId)return; // visiting is read-only
   if(Math.abs(target-pos)>.02)return; // ignore clicks while scrolling
   const wx=(e.clientX-VIEW0.e)/VIEW0.a,wy=(e.clientY-VIEW0.f)/VIEW0.d;
   const hit=creatures.filter(c=>c.scene===currentScene).sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;
@@ -351,8 +361,28 @@ function frame(now){
   VIEW=VIEW0;requestAnimationFrame(frame);
 }
 // ---- account: who is logged in, log out, and back to login if the session ran out ----
-fetch('/api/me').then(r=>r.ok?r.json():Promise.reject(r)).then(u=>{const w=document.getElementById('who');w.textContent=u.username;w.hidden=false}).catch(r=>{if(r&&r.status===401)location.assign('/login.html')});
-document.getElementById('logout').onclick=async()=>{await fetch('/api/logout',{method:'POST'}).catch(()=>{});location.assign('/login.html')};
-(async()=>{try{const r=await fetch('/api/creatures');if(r.status===401){location.assign('/login.html');return}if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
+if(visitId){
+  document.getElementById('ui').hidden=true;document.getElementById('account').hidden=true;document.getElementById('side').hidden=true;
+  document.getElementById('visitNav').hidden=false;
+}else{
+  const who=document.getElementById('who'),cachedUsername=localStorage.getItem('creatureWorld.username');
+  if(cachedUsername){who.textContent=cachedUsername;who.hidden=false}
+  else fetch('/api/me').then(r=>r.ok?r.json():Promise.reject(r)).then(u=>{who.textContent=u.username;who.hidden=false;localStorage.setItem('creatureWorld.username',u.username)}).catch(r=>{if(r&&r.status===401)location.assign('/login.html')});
+  document.getElementById('logout').onclick=async()=>{await fetch('/api/logout',{method:'POST'}).catch(()=>{});localStorage.removeItem('creatureWorld.username');location.assign('/login.html')};
+}
+(async()=>{
+  if(visitId){
+    try{
+      const r=await fetch('/api/friends/'+encodeURIComponent(visitId)+'/farm');
+      if(r.status===401){location.assign('/login.html');return}
+      const farm=await r.json();if(!r.ok)throw Error(farm.detail||'Could not open this friend\'s farm.');
+      document.title=farm.username+'’s Farm';document.getElementById('visitLabel').textContent='Visiting '+farm.username+'’s farm';
+      const visible=farm.creatures||[];if(!visible.length)document.getElementById('visitEmpty').hidden=false;
+      visible.forEach(data=>spawn(data));
+    }catch(error){document.getElementById('visitLabel').textContent=error.message}
+    return;
+  }
+  try{const r=await fetch('/api/creatures');if(r.status===401){location.assign('/login.html');return}if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}
+})();requestAnimationFrame(frame);
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.8.1/socket.io.min.js"></script><script src="/live.js"></script></body></html>

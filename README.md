@@ -14,6 +14,8 @@ python -m pip install -r requirements.txt
 
 On Windows, activate the environment with `venv\Scripts\activate` instead.
 
+If you already made the virtual environment and then pulled a project update, activate it and run `python -m pip install -r requirements.txt` again. This installs any dependencies added by the update; you do not need to recreate the environment.
+
 Then set up the local settings file below, and start the server.
 
 ## Set up local settings
@@ -102,7 +104,7 @@ For example your own cluster for testing, or if the shared one is replaced:
 
 A new cluster starts empty: accounts, friends and creatures from the old one don't come with it, and people on different clusters can't add each other or battle. To change the shared cluster for the whole team, update the four values in `.env.example`, commit that (never the password), and send everyone the new password privately.
 
-After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
+After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. On the Friends page, choose **Visit** to view a friend's creatures in their scenes; creatures taken out of the world are not shown. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
 
 Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
 
@@ -145,4 +147,5 @@ The server serves only files inside `frontend/`; `.env` and saved data are not e
 - If you change a page and do not see the update, hard refresh (`Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Windows/Linux).
 - If startup says "TiDB is not configured", check that `TIDB_HOST`, `TIDB_USER`, and `TIDB_PASSWORD` in `.env` are filled in correctly.
 - If the server cannot connect to TiDB, confirm the password and cluster details with the person who provided them, and check your internet connection.
+- If Python reports `ModuleNotFoundError` for a package such as `socketio`, activate `venv` and run `python -m pip install -r requirements.txt` from the project folder, then restart the server.
 - To move creatures from the old JSON files into your account: sign up first, then run `python migrate_json.py <your username>`.

@@ -43,11 +43,8 @@
   li { display: flex; align-items: center; gap: 10px; background: var(--sky); border-radius: 12px; padding: 8px 8px 8px 14px; }
   li span { flex: 1; font-weight: 700; overflow-wrap: anywhere; }
   li .btn { border-color: var(--line); font-size: .9rem; padding: 4px 10px; }
-  li .btn.battle { border-color: var(--ink); background: var(--marigold); }
+  li .btn.visit { border-color: var(--ink); background: var(--marigold); }
   li .btn:disabled { opacity: .5; cursor: default; }
-  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
-  .dot.on { background: #5E9E57; }
-  li small { display: block; font-weight: 400; color: var(--ink-soft); font-size: .8rem; }
   .empty { color: var(--ink-soft); margin: 0; }
   :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
 </style>
@@ -102,22 +99,14 @@ function render(friends) {
   $("empty").hidden = friends.length > 0;
   for (const friend of friends) {
     const li = document.createElement("li");
-    const dot = document.createElement("i"), name = document.createElement("span"), status = document.createElement("small");
-    dot.className = friend.online ? "dot on" : "dot";
-    dot.title = friend.online ? "Online" : "Offline";
+    const name = document.createElement("span");
     name.textContent = friend.username;
-    const short = friend.creatures < 3;   // battles are 3 against 3
-    status.textContent = !friend.online ? "Offline" : friend.busy ? "In a battle"
-      : short ? `Online · needs 3 creatures to battle (has ${friend.creatures})` : "Online · ready to battle";
-    name.append(status);
-    const fight = document.createElement("button");
-    fight.className = "btn battle";
-    fight.type = "button";
-    fight.textContent = "Battle";
-    fight.disabled = !friend.online || friend.busy || short || !window.liveSocket;
-    fight.title = !friend.online ? `${friend.username} needs to be online, with their farm or friends page open`
-      : short ? `${friend.username} needs at least 3 creatures` : "";
-    fight.onclick = () => invite(friend, fight);
+    const visit = document.createElement("button");
+    visit.className = "btn visit";
+    visit.type = "button";
+    visit.textContent = "Visit";
+    visit.title = `View ${friend.username}'s creatures by scene`;
+    visit.onclick = () => location.assign(`/world.html?visit=${encodeURIComponent(friend.id)}`);
     const remove = document.createElement("button");
     remove.className = "btn";
     remove.type = "button";
@@ -131,31 +120,12 @@ function render(friends) {
         load();
       } catch (err) { say(err.message, true); remove.disabled = false; }
     };
-    li.append(dot, name, fight, remove);
+    li.append(name, visit, remove);
     list.append(li);
   }
 }
 
 const load = () => api("/api/friends").then(render).catch(err => say(err.message, true));
-
-// Live battles (live.js holds the connection): invite, then wait on the battle page.
-async function invite(friend, btn) {
-  btn.disabled = true;
-  say(`Asking ${friend.username}…`);
-  try {
-    const res = await window.liveSocket.timeout(10000).emitWithAck("invite", { friendId: friend.id });
-    if (res.error) throw new Error(res.error);
-    location.assign(`/battle.html?room=${encodeURIComponent(res.battleId)}`);
-  } catch (err) {
-    say(err.message.includes("timed out") ? "The server didn't answer. Try again." : err.message, true);
-    btn.disabled = false;
-  }
-}
-if (window.liveSocket) {
-  window.liveSocket.on("presence", load);                    // a friend came online or left
-  window.liveSocket.on("connect", load);
-}
-setInterval(load, 15000);                                     // "In a battle" changes without a presence event
 
 api("/api/me").then(me => { $("myCode").textContent = me.friendCode; }).catch(() => {});
 $("copy").onclick = async () => {
