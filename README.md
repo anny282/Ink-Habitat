@@ -4,7 +4,7 @@ A creature farm: draw a creature, give it a name and personality, then watch it 
 
 ## Run locally
 
-You need Python 3.9 or newer. Open a terminal in this project folder and run these commands the first time:
+You need Python 3.9 or newer. In Terminal, go to the project folder (for example, `cd ~/Desktop/StromHacks2026`) and run these commands once:
 
 ```bash
 python3 -m venv venv
@@ -14,19 +14,37 @@ python -m pip install -r requirements.txt
 
 On Windows, activate the environment with `venv\Scripts\activate` instead.
 
-Then set up your keys (next section) and start the server (the section after).
+Then set up the local settings file below, and start the server.
 
-## Set up the API keys
+## Set up local settings
 
-All settings live in a file called `.env` in the project folder. Git ignores it, so your keys and passwords never get committed; never paste them into any other file.
+The server reads its settings from `.env` in the project folder. `.env.example` is the shareable template; `.env` is your private local copy and is ignored by Git. Keep passwords and API keys in `.env`, and never commit or share that file.
 
-### 1. Make your `.env`
+### 1. Create or open `.env`
+
+The `cp` command means “copy”: it makes a new `.env` file from the template. Run it only if you do not already have `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-It already points at the team's shared TiDB cluster (next step), so most lines are filled in. Open `.env` and write each value right after the `=`, with no spaces and no quotes.
+If `.env` already exists, **do not run that command**; open your existing `.env` instead, so you do not overwrite your local settings. Edit values directly after `=`. Do not add spaces around `=`. Quotes are not needed for the values in this file.
+
+On macOS, `.env` is hidden because its name starts with a dot. To open it in TextEdit from Terminal, run:
+
+```bash
+cd ~/Desktop/StromHacks2026
+open -e .env
+```
+
+If Terminal says `.env` does not exist, create it from the template and then open it:
+
+```bash
+cp .env.example .env
+open -e .env
+```
+
+You can also reveal hidden files in Finder by pressing **Command + Shift + .** (period) while viewing the project folder.
 
 ### 2. Database: the team's shared TiDB cluster (default)
 
@@ -39,17 +57,19 @@ TIDB_USER=3P1dKMr5gGwmeJs.root
 TIDB_DATABASE=creature_farm
 ```
 
-The only thing missing is **`TIDB_PASSWORD`**. Ask Anny for it; it's sent privately and never committed, because this repo is public and the password gives full access to the database. Paste it after `TIDB_PASSWORD=`.
+The required database setting is **`TIDB_PASSWORD`**. Ask Anny to send it privately, then paste it after `TIDB_PASSWORD=`. Do not put it in chat, code, or a committed file. If the team no longer uses this shared database, follow [Use a different TiDB cluster](#use-a-different-tidb-cluster) instead.
 
-Also set **`SESSION_SECRET`** to any long random string (it signs login cookies). Make one with:
+Set **`SESSION_SECRET`** to a long random string so login sessions survive server restarts. Make one with:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-### 3. Gemini and ElevenLabs: your own keys (optional)
+Copy the printed text into `.env` after `SESSION_SECRET=`. If you leave it blank, the site can still run, but everyone will be logged out whenever the server restarts.
 
-Each person can use their own keys. Free limits are per key, so separate keys mean more room for everyone. Without them, creatures still save, just with simple animations, attack 5 and no sound.
+### 3. Optional AI and voice keys
+
+These keys are optional: without them, the server still runs and saves creatures, but Gemini-generated animation details and ElevenLabs voice clips are unavailable. Each person can use their own keys; free usage limits apply to the account that owns each key.
 
 - **`GEMINI_API_KEY`**: go to [Google AI Studio](https://aistudio.google.com/apikey), sign in with a Google account, press **Create API key**, and copy it. Gemini picks each creature's part roles, animations and attack. The free tier allows about 20 creatures a day per model.
 - **`ELEVENLABS_API_KEY`**: sign up at [elevenlabs.io](https://elevenlabs.io), open your profile menu, go to **API Keys**, press **Create API Key** (give it Text to Speech access), and copy it. ElevenLabs makes each creature's voice clip.
@@ -61,9 +81,15 @@ ELEVENLABS_API_KEY=sk_...your key...
 
 To switch to different keys later, replace these two lines and restart the server. Only the server that saves a creature uses them, so for a demo on one laptop, that laptop's keys are the ones that count.
 
-### 4. Restart and check
+### 4. Start the server
 
-If the server is already running, restart it (`Ctrl+C`, then `python server.py`); settings are only read when it starts. Then draw a creature and watch the terminal: `[gemini] answered by ...` means Gemini worked, and `[gemini] falling back to rules: ...` says why it didn't (usually a wrong key or the free daily limit). If the server stops with "TiDB is not configured", a `TIDB_` line is empty or misspelled.
+In the project folder, with the virtual environment activated, run:
+
+```bash
+python server.py
+```
+
+Open [http://localhost:8000](http://localhost:8000) and sign up or log in. If the server is already running after you edit `.env`, stop it with `Ctrl+C` and start it again; settings are read at startup. The terminal message `[gemini] answered by ...` means Gemini worked. `[gemini] falling back to rules: ...` means it used built-in animation rules instead.
 
 ### Use a different TiDB cluster
 
@@ -76,15 +102,7 @@ For example your own cluster for testing, or if the shared one is replaced:
 
 A new cluster starts empty: accounts, friends and creatures from the old one don't come with it, and people on different clusters can't add each other or battle. To change the shared cluster for the whole team, update the four values in `.env.example`, commit that (never the password), and send everyone the new password privately.
 
-## Start the server
-
-
-```bash
-python server.py
-```
-
-Open [http://localhost:8000](http://localhost:8000). The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move each creature to one scene or take it out of the world. These scene assignments are saved locally and do not delete the creature. Stop the server with `Ctrl+C`.
-Open [http://localhost:8000](http://localhost:8000), sign up, and you land on your own farm (with one starter creature). The world page links to the drawing page, and a submitted creature is saved to your account and appears in the world. Each account only sees its own creatures. Stop the server with `Ctrl+C`.
+After signing in, you land on your farm with a starter creature. The world opens in Grasslands; use the scene menu to switch to Desert or Ocean. New creatures start in Grasslands. Open **Creatures** to move a creature to one scene or take it out of the world; this does not delete it. Creatures, accounts and scene assignments are stored in the configured TiDB database. Stop the server with `Ctrl+C`.
 
 Run `source venv/bin/activate` again in a new terminal before starting the server. If it stops with "Address already in use", an older copy is still running (for example in a terminal you closed); stop it with `lsof -ti tcp:8000 | xargs kill` and start again.
 
@@ -125,5 +143,6 @@ The server serves only files inside `frontend/`; `.env` and saved data are not e
 - If `python3` is not found, try `python`.
 - If the page is blank, check the terminal for a server error and refresh the browser.
 - If you change a page and do not see the update, hard refresh (`Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Windows/Linux).
-- If the server stops with "TiDB is not configured", fill in the `TIDB_` lines in `.env`.
+- If startup says "TiDB is not configured", check that `TIDB_HOST`, `TIDB_USER`, and `TIDB_PASSWORD` in `.env` are filled in correctly.
+- If the server cannot connect to TiDB, confirm the password and cluster details with the person who provided them, and check your internet connection.
 - To move creatures from the old JSON files into your account: sign up first, then run `python migrate_json.py <your username>`.
