@@ -298,7 +298,6 @@ addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key==='PageDown')goTo(t
 
 // ---- input ----
 cv.addEventListener('pointerdown',e=>{
-  if(visitId)return; // visiting is read-only
   if(Math.abs(target-pos)>.02)return; // ignore clicks while scrolling
   const wx=(e.clientX-VIEW0.e)/VIEW0.a,wy=(e.clientY-VIEW0.f)/VIEW0.d;
   const hit=creatures.filter(c=>c.scene===currentScene).sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;

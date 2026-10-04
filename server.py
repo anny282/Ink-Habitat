@@ -296,7 +296,7 @@ def remove_friend(friend_id: str, user=Depends(current_user)):
 
 @app.get("/api/friends/{friend_id}/farm")
 def view_friend_farm(friend_id: str, user=Depends(current_user)):
-    """Return only scene-placed, viewable creature fields for an existing friend."""
+    """Return only scene-placed, viewable creature fields for an existing friend (sound too, so a click plays it)."""
     if not ID_RE.fullmatch(friend_id) or not db.are_friends(user["id"], friend_id):
         raise HTTPException(404, "Friend not found")
     friend = db.user_by_id(friend_id)
@@ -307,7 +307,7 @@ def view_friend_farm(friend_id: str, user=Depends(current_user)):
         scene = creature.get("scene", "grasslands")  # older starter creatures predate scene assignments
         if scene not in SCENES:
             continue
-        shared = {key: creature[key] for key in ("id", "bounds", "parts", "locomotion", "idles", "personality") if key in creature}
+        shared = {key: creature[key] for key in ("id", "bounds", "parts", "locomotion", "idles", "personality", "sound") if key in creature}
         shared["scene"] = scene
         visible.append(shared)
         visible[-1]["settings"] = {"name": (creature.get("settings") or {}).get("name", "Creature")}
