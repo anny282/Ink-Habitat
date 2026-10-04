@@ -32,7 +32,7 @@ Run `source venv/bin/activate` again in a new terminal before starting the serve
 - `CREATURE_SPEC.md` — creature JSON format (v2).
 - `example_creature.json` — example creature loaded on a fresh run.
 
-The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. The server rigs each creature as it is saved. Until Gemini role labels are available, attached unlabeled strokes get a gentle default swing. Gemini animation details and ElevenLabs audio generation are not configured yet.
+The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. The server rigs each creature as it is saved. Until Gemini role labels are available, attached unlabeled strokes get a gentle default swing. Gemini animation details and ElevenLabs audio generation are not configured yet. Nearby creatures greet when they come within range: they face each other, play an idle, say their sound when available, pause, then wander off. Individual and world-wide cooldowns keep greetings occasional, and pathing keeps their outlines apart.
 
 ## Troubleshooting
 

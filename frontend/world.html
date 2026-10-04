@@ -15,6 +15,7 @@ canvas{display:block}
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button></div>
+<div id="spaceNotice" hidden style="position:fixed;top:58px;left:10px;max-width:340px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There is no safe space for another creature. Delete one from the Creatures list to make room.</div>
 <div id="side"><h3>Creatures</h3><div id="list"></div><div class="dev"><b>Dev tools</b><button id="ex">Add example</button><label>Load JSON <input type="file" id="f" accept=".json"></label></div></div>
 <script>
 // ---- Example creature (same as example_creature.json). Replace with fetch('creature.json') in your repo. ----
@@ -46,11 +47,39 @@ function inPoly(x,y){let r=false;for(let i=0,j=ISLE.length-1;i<ISLE.length;j=i++
 const depY=y=>.85+.3*Math.min(1,Math.max(0,(y-515)/735));   // slightly bigger toward the front
 const depth=c=>depY(c.y);
 const walkable=(c,x,y)=>{const fy=y+c.b.maxY*depY(y);return[-35,0,35].every(o=>inPoly(x+o,fy))}; // feet must be on grass
-function placeRandom(c){for(let i=0;i<300;i++){const x=rnd(157,1730),y=rnd(515,1250);if(walkable(c,x,y)){c.x=x;c.y=y;return}}c.x=800;c.y=800}
+function minSeparation(a,b,dx,dy){
+  const distance=Math.hypot(dx,dy*.6);
+  const ux=distance?dx/distance:1,uy=distance?(dy*.6)/distance:0;
+  const aw=(a.b.maxX-a.b.minX)/2,ah=(a.b.maxY-a.b.minY)/2;
+  const bw=(b.b.maxX-b.b.minX)/2,bh=(b.b.maxY-b.b.minY)/2;
+  // Project each creature's bounds onto the line between their centers.
+  return (Math.abs(ux)*(aw+bw)+Math.abs(uy)*.6*(ah+bh))*SEPARATION_SCALE+BODY_GAP;
+}
+function clearOfOthers(c,x,y){return creatures.every(o=>{
+  if(o===c)return true;
+  const dx=x-o.x,dy=y-o.y,distance=Math.hypot(dx,dy*.6);
+  return distance>=minSeparation(c,o,dx,dy);
+})}
+function placeRandom(c){
+  for(let i=0;i<5000;i++){
+    const x=rnd(157,1730),y=rnd(515,1250);
+    if(!walkable(c,x,y))continue;
+    const clearance=creatures.length?Math.min(...creatures.map(o=>{
+      const dx=x-o.x,dy=y-o.y;return Math.hypot(dx,dy*.6)-minSeparation(c,o,dx,dy)
+    })):Infinity;
+    if(clearance>=0){c.x=x;c.y=y;return true}
+  }
+  return false;
+}
 const creatures=[];
+const GREETING_BUFFER=30; // greet this far before the creatures' outlines would touch
+const SEPARATION_SCALE=.9; // gently reduces the bounds-based spacing
+const BODY_GAP=5; // extra clearance so strokes don't visually crowd
+let worldTime=0,nextEncounterAt=0;
 
 // ---- spawn / state machine ----
 function spawn(data){
+  if(data.sound===undefined&&data.settings&&data.settings.sound){data={...data,sound:{text:String(data.settings.sound).trim().slice(0,19),audioUrl:null}}}
   const p=data.personality||{},parts={};
   const plist=(data.parts||[]).slice(0,8);
   plist.forEach(q=>parts[q.id]=q);
@@ -59,19 +88,73 @@ function spawn(data){
     b:{minX:b.minX??-60,minY:b.minY??-60,maxX:b.maxX??60,maxY:b.maxY??60},
     x:0,y:0,dir:1,state:'rest',t:0,idle:null,idleT:0,clock:rnd(0,50),
     rest:clamp(p.restSeconds,1,10,3),every:clamp(p.speakEverySeconds,15,90,30),speed:clamp(p.speedPxPerSec,20,150,50),
-    speakT:rnd(6,16),bubble:'',bubbleT:0,react:0};
-  placeRandom(c);creatures.push(c);startRest(c);refreshList();
+    speakT:rnd(6,16),bubble:'',bubbleT:0,react:0,greetReadyAt:worldTime+rnd(5,14)};
+  if(!placeRandom(c))return false;
+  creatures.push(c);startRest(c);refreshList();return true;
 }
-function startRest(c){c.state='rest';c.t=0;c.idleT=0;const i=c.d.idles||[];c.idle=i.length?i[Math.floor(Math.random()*i.length)]:null}
+function randomIdle(c){
+  const idles=Array.isArray(c.d.idles)?c.d.idles.filter(Boolean):[];
+  const parts=c.order.filter(p=>p.parent&&p.moves!==false);
+  if(idles.length){
+    const idle=structuredClone(idles[Math.floor(Math.random()*idles.length)]);
+    const hasTrack=(idle.tracks||[]).some(t=>{
+      const part=c.parts[t.part],moves=(t.rotate&&Number(t.rotate.amp)>0)||(t.scale&&Number(t.scale.amp)>0)||(t.offset&&(Number(t.offset.ax)!==0||Number(t.offset.ay)!==0));
+      return part&&part.parent&&part.moves!==false&&moves;
+    });
+    if(hasTrack)return idle;
+  }
+  if(parts.length){
+    const part=parts[Math.floor(Math.random()*parts.length)];
+    return{name:'little wiggle',duration:rnd(2,3.5),tracks:[{part:part.id,rotate:{amp:rnd(12,24),freq:rnd(.7,1.5),phase:rnd(0,1)}}]};
+  }
+  // A one-stroke creature has no limb to animate; use a tiny whole-creature greeting bob.
+  return{name:'hello bob',duration:rnd(2,3.5),tracks:[],wholeCreature:true};
+}
+function startRest(c){c.state='rest';c.t=0;c.idleT=0;c.idle=randomIdle(c)}
 function startWalk(c){c.state='walk';c.t=0;c.walkDur=rnd(2,5);c.ang=rnd(0,TAU)}
+function startGreeting(a,b){
+  a.dir=b.x>=a.x?1:-1;b.dir=a.x>=b.x?1:-1;
+  for(const c of [a,b]){
+    c.state='greeting';c.t=0;c.greetingT=0;c.idleT=0;c.idle=randomIdle(c);
+    c.greetingIdleDuration=clamp(c.idle&&c.idle.duration,1,5,2.5);
+    c.greetingWaitDuration=rnd(2.5,4);
+    c.greetingPartner=c===a?b:a;
+    c.speakT=c.every*rnd(.8,1.2);
+    say(c);
+  }
+}
+function maybeStartEncounters(){
+  if(worldTime<nextEncounterAt)return;
+  for(let i=0;i<creatures.length;i++){
+    const a=creatures[i];
+    if(!['rest','walk'].includes(a.state)||worldTime<a.greetReadyAt)continue;
+    for(let j=i+1;j<creatures.length;j++){
+      const b=creatures[j];
+      if(!['rest','walk'].includes(b.state)||worldTime<b.greetReadyAt)continue;
+      const dx=b.x-a.x,dy=b.y-a.y,distance=Math.hypot(dx,dy*.6);
+      if(distance<=minSeparation(a,b,dx,dy)+GREETING_BUFFER){startGreeting(a,b);nextEncounterAt=worldTime+rnd(2,4);return}
+    }
+  }
+}
 function update(c,dt){
-  c.clock+=dt;c.t+=dt;
-  if(c.state==='rest'){c.idleT+=dt;if(c.t>=c.rest)startWalk(c)}
-  else{if(c.t>=c.walkDur)startRest(c);
+  c.clock+=dt;
+  if(c.state==='greeting'){
+    c.greetingT+=dt;c.idleT+=dt;
+    if(c.greetingT>=c.greetingIdleDuration){c.state='greetingWait';c.t=0}
+  }else if(c.state==='greetingWait'){
+    c.t+=dt;
+    if(c.t>=c.greetingWaitDuration){
+      c.greetReadyAt=worldTime+rnd(24,38);c.greetingPartner=null;startWalk(c);
+    }
+  }else{
+    c.t+=dt;
+    if(c.state==='rest'){c.idleT+=dt;if(c.t>=c.rest)startWalk(c)}
+    else if(c.t>=c.walkDur)startRest(c);
     else{const step=c.speed*dt;let nx=c.x+Math.cos(c.ang)*step,ny=c.y+Math.sin(c.ang)*step*.6;
-      if(!walkable(c,nx,ny)){c.ang+=Math.PI+rnd(-.7,.7);nx=c.x;ny=c.y} // touched the edge: turn around
-      c.x=nx;c.y=ny;const hx=Math.cos(c.ang);if(Math.abs(hx)>.05)c.dir=hx>0?1:-1}}
-  if(c.d.sound){c.speakT-=dt;if(c.speakT<=0){say(c);c.speakT=c.every*rnd(.8,1.2)}}
+      if(!walkable(c,nx,ny)||!clearOfOthers(c,nx,ny)){c.ang+=Math.PI+rnd(-.7,.7);nx=c.x;ny=c.y} // island edge or another creature: turn away
+      c.x=nx;c.y=ny;const hx=Math.cos(c.ang);if(Math.abs(hx)>.05)c.dir=hx>0?1:-1}
+  }
+  if(c.d.sound&&c.state!=='greeting'&&c.state!=='greetingWait'){c.speakT-=dt;if(c.speakT<=0){say(c);c.speakT=c.every*rnd(.8,1.2)}}
   if(c.bubbleT>0)c.bubbleT-=dt;if(c.react>0)c.react-=dt;
 }
 
@@ -114,6 +197,7 @@ function bodyFx(c){
     if(type==='scoot')tilt=-6*c.dir;
   }
   if(c.react>0)dy-=Math.abs(Math.sin((.6-c.react)*TAU*1.5))*18;
+  if(c.state==='greeting'&&c.idle&&c.idle.wholeCreature){const wave=Math.sin(TAU*c.greetingT/c.greetingIdleDuration);dy-=Math.abs(wave)*4;tilt=wave*2}
   return{dx,dy,tilt};
 }
 function mat(c,p,base,an,memo,depthGuard=0){
@@ -172,9 +256,21 @@ cv.addEventListener('pointerdown',e=>{
     return Math.abs(wx-c.x)<hw&&wy>c.y+c.b.minY*k&&wy<c.y+c.b.maxY*k});
   if(hit){hit.react=.6;say(hit)}
 });
-document.getElementById('ex').onclick=async()=>{try{const r=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(EXAMPLE)});if(!r.ok)throw Error();spawn(await r.json())}catch{alert('Could not save the example. Is the local server running?')}};
-document.getElementById('f').onchange=e=>{const f=e.target.files[0];if(!f)return;
-  f.text().then(async t=>{const r=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:t});if(!r.ok)throw Error();spawn(await r.json())}).catch(()=>alert('Could not load that creature JSON. Check the file and make sure the server is running.'))};
+function showNoSpace(){document.getElementById('spaceNotice').hidden=false}
+async function saveAndSpawn(data,label){
+  let response;
+  try{response=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
+  catch(error){alert(`Could not reach the server to save ${label}: ${error.message}`);return}
+  if(!response.ok){const detail=await response.json().catch(()=>({}));alert(`The server could not save ${label} (${response.status}): ${detail.detail||response.statusText}`);return}
+  const saved=await response.json();
+  try{if(!spawn(saved))showNoSpace()}
+  catch(error){console.error('Creature saved, but could not be displayed:',error);alert(`${label} was saved, but the world could not display it: ${error.message}`)}
+}
+document.getElementById('ex').onclick=()=>saveAndSpawn(EXAMPLE,'the example creature');
+document.getElementById('f').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  try{const data=JSON.parse(await f.text());await saveAndSpawn(data,'that creature')}
+  catch(error){alert(`Could not read that creature JSON: ${error.message}`)}
+};
 
 // ---- sidebar: view and delete creatures ----
 function thumb(c){const t=document.createElement('canvas');t.width=t.height=64;const x=t.getContext('2d');
@@ -195,11 +291,12 @@ document.getElementById('tg').onclick=()=>document.getElementById('side').classL
 // ---- main loop ----
 let last=performance.now();
 function frame(now){
-  const dt=Math.min(.05,(now-last)/1000);last=now;
+  const dt=Math.min(.05,(now-last)/1000);last=now;worldTime+=dt;
+  maybeStartEncounters();
   drawBackground();
   creatures.forEach(c=>update(c,dt));
   [...creatures].sort((a,b)=>footY(a)-footY(b)).forEach(drawCreature); // lower on screen = in front
   requestAnimationFrame(frame);
 }
-(async()=>{try{const r=await fetch('/api/creatures');if(!r.ok)throw Error();const saved=await r.json();(saved.length?saved:[EXAMPLE]).forEach(spawn)}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
+(async()=>{try{const r=await fetch('/api/creatures');if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
 </script></body></html>
