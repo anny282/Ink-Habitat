@@ -1,43 +1,41 @@
 # StromHacks2026
 
-A creature farm, just the creatures seems...
+A creature farm: draw a creature, give it a name and personality, then watch it wander around the island.
 
-Draw a creature, give it a name, a way of moving, a couple of behaviours and a sound. AI brings it to life, and it joins the farm: wandering around, playing its idle animations, and saying its sound now and then.
+## Run locally
 
-## How it works
+You need Python 3.9 or newer. Open a terminal in this project folder and run these commands the first time:
 
-1. **Draw** a creature and fill in its textboxes in the drawing tool.
-2. **Gemini** decides what each stroke is (leg, wing, tail...), how the creature moves, and its two idle animations.
-3. **Code** rolls a random personality and voice.
-4. **ElevenLabs** voices the creature's sound once.
-5. **The world** runs every creature with no further AI calls.
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
+```
 
-The JSON format that connects all of this is in [CREATURE_SPEC.md](CREATURE_SPEC.md). Read it before changing any field.
+On Windows, activate the environment with `venv\Scripts\activate` instead. Then start the local server:
 
-## Project structure
+```bash
+python server.py
+```
 
-| Path | What it is |
-|---|---|
-| `frontend/draw-creature.html` | the drawing tool |
-| `example_creature.json` | a complete, hand-filled creature to build the world against |
-| `test-creatures/` | raw drafts straight from the drawing tool |
-| `CREATURE_SPEC.md` | the creature JSON spec (v2) |
-| `.env.example` | template for the API keys |
+Open [http://localhost:8000](http://localhost:8000). The world page links to the drawing page, and a submitted creature is saved to the local server and appears in the world. Stop the server with `Ctrl+C`.
 
-## Setup
+Run `source venv/bin/activate` again in a new terminal before starting the server. If port 8000 is already in use, change the port in `server.py`.
 
-1. Copy the env template and add your keys:
-   ```
-   cp .env.example .env
-   ```
-   `.env` is gitignored. Never commit it.
-2. Open `frontend/draw-creature.html` in a browser to try the drawing tool.
+## Pages and files
 
-## Status
+- `frontend/draw-creature.html` — draw a creature and submit it to the server.
+- `frontend/world.html` — view, animate, and manage saved creatures.
+- `server.py` — local web server and creature storage API.
+- `data/creatures/` — created automatically; stores saved creature JSON files.
+- `CREATURE_SPEC.md` — creature JSON format (v2).
+- `example_creature.json` — example creature loaded on a fresh run.
 
-- [x] Creature spec v2
-- [x] Drawing tool
-- [ ] Rigging (`parent`, `pivot`, `z`)
-- [ ] Backend: Gemini call, clamping, random personality and voice
-- [ ] ElevenLabs audio
-- [ ] World: wandering, animation, speaking
+The server serves only files inside `frontend/`; `.env` and saved data are not exposed as website files. The current local backend stores drawing submissions as-is. Gemini rigging and ElevenLabs audio generation are not configured yet.
+
+## Troubleshooting
+
+- If `python3` is not found, try `python`.
+- If the page is blank, check the terminal for a server error and refresh the browser.
+- If you change a page and do not see the update, hard refresh (`Cmd+Shift+R` on macOS or `Ctrl+Shift+R` on Windows/Linux).
+- To start with a fresh creature collection, stop the server and remove the JSON files in `data/creatures/`. The example creature is added again on the next start.

@@ -79,6 +79,7 @@
 </head>
 <body>
 <main>
+  <nav style="display:flex;justify-content:flex-end;margin-bottom:8px"><a href="/world.html">Visit the creature world →</a></nav>
   <h1>Draw a creature</h1>
   <p class="lede">Every stroke becomes one part of your creature, up to 8. Your biggest stroke becomes the body, and everything else can wiggle, flap, or walk.</p>
 
@@ -154,10 +155,18 @@ const COLORS = ["#26314F", "#C8413A", "#F2B134", "#4E9A63", "#3D7DD8", "#9B5DE5"
 
 /* ===================== Integration hook ===================== */
 // Called with the draft creature when the user clicks "Bring it to life".
-// Next step: POST it to your backend, which runs Gemini, the random rolls and ElevenLabs.
-function onCreatureReady(draft) {
-  // fetch("/api/creatures", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
-  console.log("Creature draft:", draft);
+// Save the draft through the local backend, then open the world.
+async function onCreatureReady(draft) {
+  const response = await fetch("/api/creatures", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft)
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.detail || "The server could not save your creature.");
+  }
+  return response.json();
 }
 
 /* ===================== State ===================== */
@@ -435,7 +444,7 @@ const errorEl = document.getElementById("error");
 function showError(msg) { errorEl.textContent = msg; }
 function clearErrorIf(fragment) { if (errorEl.textContent.includes(fragment)) errorEl.textContent = ""; }
 
-document.getElementById("details").addEventListener("submit", e => {
+document.getElementById("details").addEventListener("submit", async e => {
   e.preventDefault();
   if (strokes.length === 0) return showError("Draw your creature first.");
   if (!clean("name")) {
@@ -445,7 +454,18 @@ document.getElementById("details").addEventListener("submit", e => {
   showError("");
   lastDraft = buildDraft();
   showResult(lastDraft);
-  onCreatureReady(lastDraft);
+  const submit = e.currentTarget.querySelector("button[type=submit]");
+  submit.disabled = true;
+  submit.textContent = "Saving…";
+  try {
+    await onCreatureReady(lastDraft);
+    showError("Saved! Opening the creature world…");
+    window.location.assign("/world.html");
+  } catch (error) {
+    showError(`${error.message} Make sure the local server is running, then try again.`);
+    submit.disabled = false;
+    submit.textContent = "Bring it to life";
+  }
 });
 
 /* ===================== Output panel ===================== */

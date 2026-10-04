@@ -1,0 +1,205 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Creature World</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#cfe8d5;font-family:system-ui,sans-serif}
+canvas{display:block}
+#ui{position:fixed;top:10px;left:10px;display:flex;gap:8px}
+#ui a,#ui button{background:#fff;border:0;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;text-decoration:none;cursor:pointer;box-shadow:0 2px 6px #0003}
+#side{position:fixed;top:0;right:0;bottom:0;width:280px;background:#fffe;padding:12px;overflow:auto;transform:translateX(100%);transition:transform .2s;box-shadow:-4px 0 12px #0002;font-size:14px}
+#side.open{transform:none}#side h3{margin:4px 0 10px}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:8px;background:#f4f4f0;border-radius:10px;padding:6px}
+.row canvas{background:#e6f0d8;border-radius:8px}.row span{flex:1;font-weight:600}
+.row button{border:0;background:#e8685a;color:#fff;border-radius:8px;padding:5px 9px;cursor:pointer}
+.dev{margin-top:16px;font-size:12px;border-top:1px solid #0002;padding-top:10px;display:grid;gap:6px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button></div>
+<div id="side"><h3>Creatures</h3><div id="list"></div><div class="dev"><b>Dev tools</b><button id="ex">Add example</button><label>Load JSON <input type="file" id="f" accept=".json"></label></div></div>
+<script>
+// ---- Example creature (same as example_creature.json). Replace with fetch('creature.json') in your repo. ----
+const EXAMPLE={version:2,id:"example",settings:{name:"Sir Noodle"},bounds:{minX:-60,minY:-75,maxX:100,maxY:85},
+parts:[
+{id:"p0",points:[[60,0],[52,22],[30,39],[0,45],[-30,39],[-52,22],[-60,0],[-52,-22],[-30,-39],[0,-45],[30,-39],[52,-22],[60,0]],color:"#e07a5f",width:10,parent:null,pivot:[0,0],role:"body",moves:false,z:0},
+{id:"p1",points:[[-30,40],[-32,62],[-35,85]],color:"#3d405b",width:7,parent:"p0",pivot:[-30,40],role:"leg",moves:true,z:-1},
+{id:"p2",points:[[25,40],[28,62],[32,85]],color:"#3d405b",width:7,parent:"p0",pivot:[25,40],role:"leg",moves:true,z:-1},
+{id:"p3",points:[[60,0],[85,-10],[100,-30]],color:"#81b29a",width:6,parent:"p0",pivot:[60,0],role:"tail",moves:true,z:-1},
+{id:"p4",points:[[20,-15],[22,-13]],color:"#222",width:12,parent:"p0",pivot:[21,-14],role:"eye",moves:false,z:1},
+{id:"p5",points:[[-25,-42],[-5,-75],[15,-42]],color:"#f2cc8f",width:8,parent:"p0",pivot:[-5,-42],role:"decoration",moves:true,z:1}],
+locomotion:{type:"walk",gait:[{part:"p1",rotate:{amp:28,freq:1.5,phase:0}},{part:"p2",rotate:{amp:28,freq:1.5,phase:.5}},{part:"p3",rotate:{amp:20,freq:3,phase:0}}]},
+idles:[{name:"dramatic bow",duration:2.5,tracks:[{part:"p5",rotate:{amp:30,freq:.8,phase:.25}},{part:"p3",rotate:{amp:15,freq:.8,phase:0}}]},
+{name:"tail spin tantrum",duration:2,tracks:[{part:"p3",rotate:{amp:60,freq:3.5,phase:0}},{part:"p1",offset:{ax:0,ay:-6,freq:3,phase:0}},{part:"p2",offset:{ax:0,ay:-6,freq:3,phase:.5}}]}],
+sound:{text:"Kneel!",voice:{voiceId:"x",stability:.4,style:.3,speed:.9,playbackRate:.8},audioUrl:null},
+personality:{restSeconds:3,speakEverySeconds:30,speedPxPerSec:50}};
+
+// ---- helpers ----
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');let W,H;
+let VIEW=new DOMMatrix();
+function resize(){W=cv.width=innerWidth;H=cv.height=innerHeight;const k=Math.min(W/1960,H/1496)*.96;VIEW=new DOMMatrix().translate((W-1960*k)/2,(H-1496*k)/2).scale(k,k)}resize();addEventListener('resize',resize);
+const TAU=Math.PI*2,rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b,d)=>typeof v==='number'&&isFinite(v)?Math.min(b,Math.max(a,v)):d; // world never trusts the JSON
+const wave=(w,t)=>w?Math.sin(TAU*(clamp(w.freq,.2,4,1)*t+clamp(w.phase,0,1,0))):0;
+// Island top face (world coords = pixels of the reference picture). Creatures stay inside this polygon.
+const ISLE=[[157,843],[918,515],[1730,820],[1178,1250],[765,1065],[682,1125]];
+function inPoly(x,y){let r=false;for(let i=0,j=ISLE.length-1;i<ISLE.length;j=i++){const a=ISLE[i],b=ISLE[j];
+  if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])r=!r}return r}
+const depY=y=>.85+.3*Math.min(1,Math.max(0,(y-515)/735));   // slightly bigger toward the front
+const depth=c=>depY(c.y);
+const walkable=(c,x,y)=>{const fy=y+c.b.maxY*depY(y);return[-35,0,35].every(o=>inPoly(x+o,fy))}; // feet must be on grass
+function placeRandom(c){for(let i=0;i<300;i++){const x=rnd(157,1730),y=rnd(515,1250);if(walkable(c,x,y)){c.x=x;c.y=y;return}}c.x=800;c.y=800}
+const creatures=[];
+
+// ---- spawn / state machine ----
+function spawn(data){
+  const p=data.personality||{},parts={};
+  const plist=(data.parts||[]).slice(0,8);
+  plist.forEach(q=>parts[q.id]=q);
+  const b=data.bounds||{};
+  const c={d:data,parts,order:[...plist].sort((a,b)=>(a.z||0)-(b.z||0)),
+    b:{minX:b.minX??-60,minY:b.minY??-60,maxX:b.maxX??60,maxY:b.maxY??60},
+    x:0,y:0,dir:1,state:'rest',t:0,idle:null,idleT:0,clock:rnd(0,50),
+    rest:clamp(p.restSeconds,1,10,3),every:clamp(p.speakEverySeconds,15,90,30),speed:clamp(p.speedPxPerSec,20,150,50),
+    speakT:rnd(6,16),bubble:'',bubbleT:0,react:0};
+  placeRandom(c);creatures.push(c);startRest(c);refreshList();
+}
+function startRest(c){c.state='rest';c.t=0;c.idleT=0;const i=c.d.idles||[];c.idle=i.length?i[Math.floor(Math.random()*i.length)]:null}
+function startWalk(c){c.state='walk';c.t=0;c.walkDur=rnd(2,5);c.ang=rnd(0,TAU)}
+function update(c,dt){
+  c.clock+=dt;c.t+=dt;
+  if(c.state==='rest'){c.idleT+=dt;if(c.t>=c.rest)startWalk(c)}
+  else{if(c.t>=c.walkDur)startRest(c);
+    else{const step=c.speed*dt;let nx=c.x+Math.cos(c.ang)*step,ny=c.y+Math.sin(c.ang)*step*.6;
+      if(!walkable(c,nx,ny)){c.ang+=Math.PI+rnd(-.7,.7);nx=c.x;ny=c.y} // touched the edge: turn around
+      c.x=nx;c.y=ny;const hx=Math.cos(c.ang);if(Math.abs(hx)>.05)c.dir=hx>0?1:-1}}
+  if(c.d.sound){c.speakT-=dt;if(c.speakT<=0){say(c);c.speakT=c.every*rnd(.8,1.2)}}
+  if(c.bubbleT>0)c.bubbleT-=dt;if(c.react>0)c.react-=dt;
+}
+
+// ---- sound (uses cached audioUrl; falls back to browser speech so you can test the feel) ----
+function say(c){
+  const s=c.d.sound;if(!s)return;c.bubble=s.text;c.bubbleT=2.5;
+  const rate=clamp(s.voice&&s.voice.playbackRate,.5,2,1);
+  if(s.audioUrl){const a=new Audio(s.audioUrl);a.preservesPitch=false;a.playbackRate=rate;a.play().catch(()=>{})}
+  else if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance(s.text);u.pitch=rate;u.rate=rate;speechSynthesis.speak(u)}
+}
+
+// ---- animation: collect per-part rotate/scale/offset ----
+function animate(c){
+  const out={},t=c.clock;
+  const add=(id,tr,tt)=>{const p=c.parts[id];if(!p||!p.parent||!p.moves)return; // body (no parent) never animates
+    const o=out[id]||(out[id]={r:0,s:1,ox:0,oy:0});
+    if(tr.rotate)o.r+=clamp(tr.rotate.amp,0,60,15)*wave(tr.rotate,tt);
+    if(tr.scale)o.s+=clamp(tr.scale.amp,0,.4,.1)*wave(tr.scale,tt);
+    if(tr.offset){o.ox+=clamp(tr.offset.ax,-30,30,0)*wave(tr.offset,tt);o.oy+=clamp(tr.offset.ay,-30,30,0)*wave(tr.offset,tt)}};
+  if(c.state==='walk'){
+    const gait=(c.d.locomotion&&c.d.locomotion.gait)||[],listed=new Set(gait.map(g=>g.part));
+    gait.forEach(g=>add(g.part,g,t));
+    const n={};c.order.forEach(p=>{if(listed.has(p.id)||!p.moves||!p.parent)return;const i=n[p.role]=(n[p.role]||0);n[p.role]++;
+      const def={leg:[20,2,(i%2)*.5],arm:[20,2,(i%2)*.5+.25],wing:[35,4,0],tail:[15,3,0]}[p.role];
+      if(def)add(p.id,{rotate:{amp:def[0],freq:def[1],phase:def[2]}},t)});
+  }else if(c.idle&&c.idleT<clamp(c.idle.duration,1,5,2)){
+    (c.idle.tracks||[]).forEach(tr=>add(tr.part,tr,c.idleT));
+  }
+  return out;
+}
+// whole-creature motion by locomotion type (body itself never changes in local space)
+function bodyFx(c){
+  const t=c.clock,type=(c.d.locomotion&&c.d.locomotion.type)||'walk',w=c.state==='walk';
+  let dx=0,dy=0,tilt=0;
+  if(type==='fly')dy=-35+Math.sin(t*3)*5;
+  else if(w){
+    if(type==='walk')dy=-Math.abs(Math.sin(t*6))*3;
+    if(type==='hop')dy=-Math.abs(Math.sin(t*4))*22;
+    if(type==='slither')dx=Math.sin(t*5)*8;
+    if(type==='scoot')tilt=-6*c.dir;
+  }
+  if(c.react>0)dy-=Math.abs(Math.sin((.6-c.react)*TAU*1.5))*18;
+  return{dx,dy,tilt};
+}
+function mat(c,p,base,an,memo,depthGuard=0){
+  if(memo[p.id])return memo[p.id];
+  const par=p.parent&&c.parts[p.parent];let m;
+  if(!par||depthGuard>10)m=base;
+  else{const pm=mat(c,par,base,an,memo,depthGuard+1),a=an[p.id]||{r:0,s:1,ox:0,oy:0},v=p.pivot||[0,0];
+    m=pm.translate(a.ox,a.oy).translate(v[0],v[1]).rotate(a.r).scale(a.s,a.s).translate(-v[0],-v[1])}
+  return memo[p.id]=m;
+}
+
+// ---- drawing ----
+function footY(c){return c.y+c.b.maxY*depth(c)}
+function drawCreature(c){
+  const k=depth(c),fx=bodyFx(c),an=animate(c);
+  // shadow on the ground, shrinks when the creature is lifted
+  const lift=Math.max(0,-fx.dy);
+  ctx.setTransform(VIEW);ctx.fillStyle='rgba(0,0,0,'+(.25-Math.min(.15,lift/300))+')';
+  ctx.beginPath();ctx.ellipse(c.x,footY(c),(c.b.maxX-c.b.minX)*.35*k*(1-Math.min(.4,lift/150)),11*k,0,0,TAU);ctx.fill();
+  const base=VIEW.translate(c.x+fx.dx*k,c.y+fx.dy*k).rotate(fx.tilt).scale(k*c.dir,k),memo={};
+  ctx.lineCap='round';ctx.lineJoin='round';
+  c.order.forEach(p=>{
+    ctx.setTransform(mat(c,p,base,an,memo));
+    ctx.strokeStyle=p.color||'#000';ctx.lineWidth=p.width||6;
+    ctx.beginPath();(p.points||[]).forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));
+    if((p.points||[]).length===1)ctx.lineTo(p.points[0][0]+.1,p.points[0][1]);
+    ctx.stroke();
+  });
+  // name label (and speech bubble) above the head
+  ctx.setTransform(VIEW);
+  const ly=c.y+(fx.dy+c.b.minY)*k-20,name=(c.d.settings&&c.d.settings.name)||'???';
+  ctx.font='bold 24px system-ui';ctx.textAlign='center';ctx.lineWidth=6;ctx.strokeStyle='#fff';ctx.strokeText(name,c.x,ly);ctx.fillStyle='#333';ctx.fillText(name,c.x,ly);
+  if(c.bubbleT>0){
+    ctx.font='24px system-ui';const w=ctx.measureText(c.bubble).width+34;
+    ctx.fillStyle='#fff';ctx.strokeStyle='#333';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(c.x-w/2,ly-86,w,50,16);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#222';ctx.fillText(c.bubble,c.x,ly-52);
+  }
+}
+const SIDES=[['#aa8f6d',[[157,848],[682,1125],[682,1215],[157,917]]],['#85684a',[[682,1125],[765,1065],[765,1158],[682,1215]]],
+  ['#aa8f6d',[[765,1065],[1178,1250],[1178,1345],[765,1158]]],['#85684a',[[1178,1250],[1730,820],[1730,905],[1178,1345]]]];
+const TUFTS=[[985,565],[312,824],[556,1004],[1032,886],[1334,872],[1492,848],[1116,1168],[760,700],[1200,700],[430,900]];
+function drawBackground(){
+  ctx.setTransform(1,0,0,1,0,0);
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#8ab3ff');g.addColorStop(1,'#cadcff');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.setTransform(VIEW);
+  const poly=(pts,col)=>{ctx.fillStyle=col;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.closePath();ctx.fill()};
+  SIDES.forEach(q=>poly(q[1],q[0]));poly(ISLE,'#92b46e');
+  ctx.strokeStyle='#6f9457';ctx.lineWidth=4;ctx.lineCap='round';
+  TUFTS.forEach(([x,y])=>{ctx.beginPath();ctx.moveTo(x-8,y-6);ctx.lineTo(x-4,y);ctx.moveTo(x,y-9);ctx.lineTo(x+1,y);ctx.moveTo(x+9,y-6);ctx.lineTo(x+5,y);ctx.stroke()});
+}
+
+// ---- input ----
+cv.addEventListener('pointerdown',e=>{
+  const wx=(e.clientX-VIEW.e)/VIEW.a,wy=(e.clientY-VIEW.f)/VIEW.d;
+  const hit=[...creatures].sort((a,b)=>footY(b)-footY(a)).find(c=>{const k=depth(c),hw=Math.max(Math.abs(c.b.minX),Math.abs(c.b.maxX))*k;
+    return Math.abs(wx-c.x)<hw&&wy>c.y+c.b.minY*k&&wy<c.y+c.b.maxY*k});
+  if(hit){hit.react=.6;say(hit)}
+});
+document.getElementById('ex').onclick=async()=>{try{const r=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(EXAMPLE)});if(!r.ok)throw Error();spawn(await r.json())}catch{alert('Could not save the example. Is the local server running?')}};
+document.getElementById('f').onchange=e=>{const f=e.target.files[0];if(!f)return;
+  f.text().then(async t=>{const r=await fetch('/api/creatures',{method:'POST',headers:{'Content-Type':'application/json'},body:t});if(!r.ok)throw Error();spawn(await r.json())}).catch(()=>alert('Could not load that creature JSON. Check the file and make sure the server is running.'))};
+
+// ---- sidebar: view and delete creatures ----
+function thumb(c){const t=document.createElement('canvas');t.width=t.height=64;const x=t.getContext('2d');
+  const b=c.b,w=b.maxX-b.minX,h=b.maxY-b.minY,s=56/Math.max(w,h);
+  x.translate(32-(b.minX+w/2)*s,32-(b.minY+h/2)*s);x.scale(s,s);x.lineCap=x.lineJoin='round';
+  c.order.forEach(p=>{x.strokeStyle=p.color||'#000';x.lineWidth=p.width||6;x.beginPath();
+    (p.points||[]).forEach((q,i)=>i?x.lineTo(q[0],q[1]):x.moveTo(q[0],q[1]));
+    if((p.points||[]).length===1)x.lineTo(p.points[0][0]+.1,p.points[0][1]);x.stroke()});return t}
+function refreshList(){const el=document.getElementById('list');if(!el)return;el.innerHTML='';
+  document.getElementById('count').textContent=creatures.length;
+  creatures.forEach(c=>{const row=document.createElement('div');row.className='row';row.appendChild(thumb(c));
+    const n=document.createElement('span');n.textContent=(c.d.settings&&c.d.settings.name)||'???';row.appendChild(n);
+    const d=document.createElement('button');d.textContent='Delete';
+    d.onclick=async()=>{if(!confirm('Delete '+n.textContent+'?'))return;try{if(c.d.id&&c.d.id!=='example'){const r=await fetch('/api/creatures/'+encodeURIComponent(c.d.id),{method:'DELETE'});if(!r.ok)throw Error()}creatures.splice(creatures.indexOf(c),1);refreshList()}catch{alert('Could not delete this creature from the server.')}};
+    row.appendChild(d);el.appendChild(row)})}
+document.getElementById('tg').onclick=()=>document.getElementById('side').classList.toggle('open');
+
+// ---- main loop ----
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  drawBackground();
+  creatures.forEach(c=>update(c,dt));
+  [...creatures].sort((a,b)=>footY(a)-footY(b)).forEach(drawCreature); // lower on screen = in front
+  requestAnimationFrame(frame);
+}
+(async()=>{try{const r=await fetch('/api/creatures');if(!r.ok)throw Error();const saved=await r.json();(saved.length?saved:[EXAMPLE]).forEach(spawn)}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
+</script></body></html>
