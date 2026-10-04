@@ -162,6 +162,9 @@ async function onCreatureReady(draft) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(draft)
   });
+  if (response.status === 401) {
+    throw new Error("You are logged out. Log in again in another tab (login.html), then press the button again.");
+  }
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
     throw new Error(detail.detail || "The server could not save your creature.");

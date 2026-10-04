@@ -7,6 +7,7 @@ canvas{display:block}
 #ui{position:fixed;top:10px;left:10px;display:flex;gap:8px}
 #ui a,#ui button{background:#fff;border:0;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;text-decoration:none;cursor:pointer;box-shadow:0 2px 6px #0003}
 #side{position:fixed;top:0;right:0;bottom:0;width:280px;background:#fffe;padding:12px;overflow:auto;transform:translateX(100%);transition:transform .2s;box-shadow:-4px 0 12px #0002;font-size:14px}
+#ui #who{background:#fff;border-radius:10px;padding:8px 14px;font:600 14px system-ui;color:#333;box-shadow:0 2px 6px #0003}
 #side.open{transform:none}#side h3{margin:4px 0 10px}
 .row{display:flex;align-items:center;gap:10px;margin-bottom:8px;background:#f4f4f0;border-radius:10px;padding:6px}
 .row canvas{background:#e6f0d8;border-radius:8px}.row span{flex:1;font-weight:600}
@@ -14,7 +15,7 @@ canvas{display:block}
 .dev{margin-top:16px;font-size:12px;border-top:1px solid #0002;padding-top:10px;display:grid;gap:6px}
 </style></head><body>
 <canvas id="c"></canvas>
-<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button></div>
+<div id="ui"><a id="add" href="/draw-creature.html">+ Draw a creature</a><button id="tg">Creatures (<span id="count">0</span>)</button><span id="who" hidden></span><button id="logout">Log out</button></div>
 <div id="spaceNotice" hidden style="position:fixed;top:58px;left:10px;max-width:340px;background:#fff;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px #0003;font:14px system-ui">There is no safe space for another creature. Delete one from the Creatures list to make room.</div>
 <div id="side"><h3>Creatures</h3><div id="list"></div><div class="dev"><b>Dev tools</b><button id="ex">Add example</button><label>Load JSON <input type="file" id="f" accept=".json"></label></div></div>
 <script>
@@ -298,5 +299,8 @@ function frame(now){
   [...creatures].sort((a,b)=>footY(a)-footY(b)).forEach(drawCreature); // lower on screen = in front
   requestAnimationFrame(frame);
 }
-(async()=>{try{const r=await fetch('/api/creatures');if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
+// ---- account: who is logged in, log out, and back to login if the session ran out ----
+fetch('/api/me').then(r=>r.ok?r.json():Promise.reject(r)).then(u=>{const w=document.getElementById('who');w.textContent=u.username;w.hidden=false}).catch(r=>{if(r&&r.status===401)location.assign('/login.html')});
+document.getElementById('logout').onclick=async()=>{await fetch('/api/logout',{method:'POST'}).catch(()=>{});location.assign('/login.html')};
+(async()=>{try{const r=await fetch('/api/creatures');if(r.status===401){location.assign('/login.html');return}if(!r.ok)throw Error();const saved=await r.json(),items=saved.length?saved:[EXAMPLE];let crowded=false;items.forEach(data=>{if(!spawn(data))crowded=true});if(crowded)showNoSpace()}catch{spawn(structuredClone(EXAMPLE))}})();requestAnimationFrame(frame);
 </script></body></html>

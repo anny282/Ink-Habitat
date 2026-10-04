@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Creature Farm Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #E4E8F6;
+    --paper: #FFFFFF;
+    --ink: #26314F;
+    --ink-soft: #5C6688;
+    --marigold: #F2B134;
+    --berry: #C8413A;
+    --line: #C9CFE6;
+    --hand: "Gaegu", "Comic Sans MS", "Chalkboard SE", cursive;
+    --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; padding: 16px; }
+  .card { width: 100%; max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 22px; padding: 26px 24px 22px; }
+  h1 { font-family: var(--hand); font-size: 2.6rem; line-height: 1; margin: 0 0 4px; }
+  .lede { margin: 0 0 20px; color: var(--ink-soft); }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 18px; }
+  .tabs button { font: inherit; font-weight: 700; background: var(--paper); color: var(--ink); border: 2px solid var(--line); border-radius: 999px; padding: 6px; cursor: pointer; }
+  .tabs button[aria-pressed="true"] { border-color: var(--ink); background: var(--sky); }
+  form { display: grid; gap: 14px; }
+  label { display: block; font-weight: 700; margin-bottom: 4px; }
+  input { width: 100%; font: inherit; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 12px; padding: 9px 12px; }
+  input:focus { outline: none; border-color: var(--ink); }
+  small { display: block; color: var(--ink-soft); margin-top: 3px; font-size: .85rem; }
+  .make {
+    font-family: var(--hand); font-size: 1.7rem; line-height: 1; color: var(--ink);
+    background: var(--marigold); border: 2px solid var(--ink); border-radius: 16px;
+    padding: 12px 18px 10px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); margin-top: 4px;
+  }
+  .make:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .make:disabled { opacity: .6; cursor: default; }
+  .error { color: var(--berry); font-weight: 700; min-height: 1.5em; margin: 0; }
+  :focus-visible { outline: 3px solid var(--marigold); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Creature Farm</h1>
+  <p class="lede">Log in to visit your farm.</p>
+  <div class="tabs">
+    <button type="button" id="tabLogin" aria-pressed="true">Log in</button>
+    <button type="button" id="tabSignup" aria-pressed="false">Sign up</button>
+  </div>
+  <form id="form">
+    <div>
+      <label for="username">Username</label>
+      <input id="username" autocomplete="username" maxlength="20" required>
+      <small id="userHint" hidden>3 to 20 letters, numbers or underscores.</small>
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <small id="passHint" hidden>At least 6 characters.</small>
+    </div>
+    <p class="error" id="error" role="alert"></p>
+    <button class="make" type="submit" id="submit">Log in</button>
+  </form>
+</main>
+<script>
+let mode = "login";
+const $ = id => document.getElementById(id);
+
+function setMode(next) {
+  mode = next;
+  const signup = mode === "signup";
+  $("tabLogin").setAttribute("aria-pressed", String(!signup));
+  $("tabSignup").setAttribute("aria-pressed", String(signup));
+  $("submit").textContent = signup ? "Make my farm" : "Log in";
+  $("userHint").hidden = $("passHint").hidden = !signup;
+  $("password").autocomplete = signup ? "new-password" : "current-password";
+  $("error").textContent = "";
+}
+$("tabLogin").onclick = () => setMode("login");
+$("tabSignup").onclick = () => setMode("signup");
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const submit = $("submit");
+  submit.disabled = true;
+  $("error").textContent = "";
+  try {
+    const res = await fetch(mode === "signup" ? "/api/signup" : "/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("username").value.trim(), password: $("password").value })
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || "Something went wrong. Try again.");
+    }
+    window.location.assign("/world.html");
+  } catch (err) {
+    $("error").textContent = err.message === "Failed to fetch"
+      ? "Can't reach the server. Make sure it is running." : err.message;
+    submit.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

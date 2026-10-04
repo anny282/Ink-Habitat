@@ -7,10 +7,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+import auth
+import db
 import elevenlabs
 import gemini
 
@@ -18,11 +20,10 @@ from rig import rig_parts
 
 BASE = Path(__file__).resolve().parent
 FRONTEND = BASE / "frontend"
-DATA = BASE / "data" / "creatures"
 AUDIO = BASE / "data" / "audio"
-DATA.mkdir(parents=True, exist_ok=True)
 AUDIO.mkdir(parents=True, exist_ok=True)
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+PAGES_NEEDING_LOGIN = {"/", "/world.html", "/draw-creature.html"}
 app = FastAPI(title="StromHacks Creature World")
 
 
@@ -51,12 +52,6 @@ VOICE_IDS = [
     "TX3LPaxmHKxFdv7VOQHJ",  # Liam: young, energetic
     "IKne3meq5aSn9XLyUdCD",  # Charlie: casual, chirpy
 ]
-
-
-def path_for(creature_id: str) -> Path:
-    if not ID_RE.fullmatch(creature_id):
-        raise HTTPException(400, "Invalid creature id")
-    return DATA / f"{creature_id}.json"
 
 
 def validate(creature):
@@ -113,54 +108,108 @@ def fill_random(creature):
 
 
 def assign_id(creature):
+    creature["version"] = 3
     creature["id"] = uuid.uuid4().hex[:12]
     creature["createdAt"] = datetime.now(timezone.utc).isoformat()
     return creature
 
 
-def write(creature):
-    path_for(creature["id"]).write_text(json.dumps(creature, indent=2), encoding="utf-8")
-    return creature
+# ---------- startup ----------
 
+@app.on_event("startup")
+def startup():
+    if not db.configured():
+        raise RuntimeError("TiDB is not configured: set TIDB_HOST, TIDB_USER and TIDB_PASSWORD in .env")
+    db.init_schema()
+
+
+# ---------- accounts ----------
+
+def current_user(request: Request):
+    user_id = auth.read_token(request.cookies.get(auth.COOKIE))
+    user = db.user_by_id(user_id) if user_id else None
+    if not user:
+        raise HTTPException(401, "Log in first")
+    return user
+
+
+def give_starter_creature(user):
+    example = BASE / "example_creature.json"
+    if example.exists():
+        creature = assign_id(json.loads(example.read_text(encoding="utf-8")))
+        db.save_creature(user["id"], db.with_defaults(creature))
+
+
+@app.post("/api/signup")
+def signup(response: Response, body: dict = Body(...)):
+    username, password = body.get("username"), body.get("password")
+    problem = auth.username_problem(username) or auth.password_problem(password)
+    if problem:
+        raise HTTPException(400, problem)
+    user = db.create_user(username, auth.hash_password(password))
+    if not user:
+        raise HTTPException(409, "That username is taken.")
+    give_starter_creature(user)
+    auth.set_cookie(response, user["id"])
+    return user
+
+
+@app.post("/api/login")
+def login(response: Response, body: dict = Body(...)):
+    username, password = body.get("username"), body.get("password")
+    row = db.user_by_name(username) if isinstance(username, str) else None
+    if not row or not isinstance(password, str) or not auth.check_password(password, row["password_hash"]):
+        raise HTTPException(401, "Wrong username or password.")
+    auth.set_cookie(response, row["id"])
+    return db.public_user(row)
+
+
+@app.post("/api/logout")
+def logout(response: Response):
+    auth.clear_cookie(response)
+    return {"ok": True}
+
+
+@app.get("/api/me")
+def me(user=Depends(current_user)):
+    return db.public_user(user)
+
+
+# ---------- creatures (each account sees only its own farm) ----------
 
 @app.get("/api/creatures")
-def list_creatures():
-    creatures = []
-    for path in DATA.glob("*.json"):
-        try:
-            creatures.append(json.loads(path.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            continue
-    return sorted(creatures, key=lambda c: c.get("createdAt", ""))
+def list_creatures(user=Depends(current_user)):
+    return db.get_creatures(user["id"])
 
 
 @app.post("/api/creatures")
-def create_creature(creature: dict = Body(...)):
+def create_creature(creature: dict = Body(...), user=Depends(current_user)):
     creature = validate(creature)
     rig_parts(creature["parts"])           # parent, pivot, z (Gemini's part summary uses the rig)
     gemini.enrich(creature)                # role, moves, locomotion, idles
     rig_parts(creature["parts"])           # redo z now that roles are known
     creature = assign_id(fill_random(creature))
-    return write(elevenlabs.generate(creature, AUDIO, VOICE_IDS))
+    creature["drawnBy"] = {"userId": user["id"], "name": user["username"]}
+    creature = db.with_defaults(creature)  # battle stats; real size and baseAttack come in phase 3
+    return db.save_creature(user["id"], elevenlabs.generate(creature, AUDIO, VOICE_IDS))
 
 
 @app.delete("/api/creatures/{creature_id}")
-def delete_creature(creature_id: str):
-    path = path_for(creature_id)
-    if not path.exists():
+def delete_creature(creature_id: str, user=Depends(current_user)):
+    if not ID_RE.fullmatch(creature_id):
+        raise HTTPException(400, "Invalid creature id")
+    if not db.delete_creature(user["id"], creature_id):
         raise HTTPException(404, "Creature not found")
-    path.unlink()
     (AUDIO / f"{creature_id}.mp3").unlink(missing_ok=True)
     return {"deleted": creature_id}
 
 
-def seed():
-    example = BASE / "example_creature.json"
-    if example.exists() and not any(DATA.glob("*.json")):
-        write(assign_id(json.loads(example.read_text(encoding="utf-8"))))
-
-
-seed()
+@app.middleware("http")
+async def login_redirect(request: Request, call_next):
+    """Send logged-out visitors of the farm pages to the login page."""
+    if request.url.path in PAGES_NEEDING_LOGIN and not auth.read_token(request.cookies.get(auth.COOKIE)):
+        return RedirectResponse("/login.html")
+    return await call_next(request)
 
 
 @app.get("/", include_in_schema=False)
